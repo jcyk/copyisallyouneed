@@ -83,3 +83,9 @@ class Statistics:
 
     def step(self):
         self.statistics['steps'] += 1
+
+def layer_norm(x, variance_epsilon=1e-12):
+    u = x.mean(-1, keepdim=True)
+    s = (x - u).pow(2).mean(-1, keepdim=True)
+    x = (x - u) / torch.sqrt(s + variance_epsilon)
+    return x

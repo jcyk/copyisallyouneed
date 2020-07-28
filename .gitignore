@@ -125,3 +125,5 @@ dmypy.json
 .pyre/
 *.DS_Store
 mips/
+*.txt
+*.vocab

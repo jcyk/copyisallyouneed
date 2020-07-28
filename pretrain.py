@@ -3,12 +3,12 @@ import argparse, os, logging
 import random
 import torch.multiprocessing as mp
 import torch.distributed as dist
+import numpy as np
 
-from data import Vocab, DataLoader, BOS, EOS
-from optim import Adam, get_inverse_sqrt_schedule_with_warmup
+from data import Vocab, BOS, EOS, ListsToTensor
+from optim import Adam, get_linear_schedule_with_warmup
 from utils import move_to_device, set_seed, average_gradients, Statistics
-from generator import Generator, MemGenerator
-from work import validate
+from retriever import MatchingModel
 
 def parse_config():
     parser = argparse.ArgumentParser()
@@ -17,17 +17,13 @@ def parse_config():
     parser.add_argument('--tgt_vocab', type=str, default='en.vocab')
 
     # architecture
-    parser.add_argument('--arch', type=str, choices=['vanilla', 'mem'], default='vanilla')
     parser.add_argument('--embed_dim', type=int, default=512)
     parser.add_argument('--ff_embed_dim', type=int, default=2048)
     parser.add_argument('--num_heads', type=int, default=8)
-    parser.add_argument('--enc_layers', type=int, default=6)
-    parser.add_argument('--dec_layers', type=int, default=6)
-    parser.add_argument('--mem_enc_layers', type=int, default=4)
+    parser.add_argument('--layers', type=int, default=6)
 
     # dropout / label_smoothing
     parser.add_argument('--dropout', type=float, default=0.1)
-    parser.add_argument('--mem_dropout', type=float, default=0.6)
     parser.add_argument('--label_smoothing', type=float, default=0.1)
 
     # training
@@ -53,6 +49,52 @@ def parse_config():
 
     return parser.parse_args()
 
+def batchify(data, vocabs):
+
+    src_tokens = [[EOS] + x['src_tokens'] for x in data]
+    tgt_tokens = [[EOS] + x['tgt_tokens'] for x in data]
+
+    src_token = ListsToTensor(src_tokens, vocabs['src'])
+    tgt_token = ListsToTensor(tgt_tokens, vocabs['tgt'])
+
+    ret = {
+        'src_tokens': src_token,
+        'tgt_tokens': tgt_token,
+    }
+    return ret
+
+class DataLoader(object):
+    def __init__(self, vocabs, filename, batch_size, for_train, max_seq_len=256):
+        self.vocabs = vocabs
+        self.batch_size = batch_size
+        self.train = for_train
+
+        src_tokens, tgt_tokens = [], []
+        for line in open(filename).readlines():
+            src, tgt = line.strip().split('\t')
+            src, tgt = src.split()[:max_seq_len], tgt.split()[:max_seq_len]
+            src_tokens.append(src)
+            tgt_tokens.append(tgt)
+
+        self.src = src_tokens
+        self.tgt = tgt_tokens
+        logger.info("(DataLoader rank %d) read %s file with %d paris.", rank, filename, len(self.src))
+
+    def __len__(self):
+        return len(self.src)
+
+    def __iter__(self):
+        if self.train:
+            indices = np.random.permutation(len(self))
+        else:
+            indices = np.arange(len(self))
+        
+        cur = 0
+        while cur < len(indices):
+            data = [{'src_tokens':self.src[i], 'tgt_tokens':self.tgt[i]} for i in indices[cur:cur+self.batch_size]]
+            cur += self.batch_size
+            yield batchify(data, self.vocabs)
+
 def main(args, local_rank):
 
     logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
@@ -74,23 +116,14 @@ def main(args, local_rank):
     torch.cuda.set_device(local_rank)
     device = torch.device('cuda', local_rank)
     
-    if args.arch == 'vanilla':
-        model = Generator(vocabs,
-                args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout,
-                args.enc_layers, args.dec_layers, args.label_smoothing,
-                device)
-    elif args.arch == 'mem':
-        model = MemGenerator(vocabs,
-                args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.mem_dropout,
-                args.enc_layers, args.dec_layers, args.mem_enc_layers, args.label_smoothing,
-                device)
+    model = MatchingModel.from_params(vocabs, layers, embed_dim, ff_embed_dim, num_heads, dropout, output_dim)
 
     if args.world_size > 1:
         set_seed(19940117 + dist.get_rank())
 
     model = model.to(device)
     optimizer = Adam(model.parameters(), lr=args.embed_dim**-0.5, betas=(0.9, 0.98), eps=1e-9)
-    lr_schedule = get_inverse_sqrt_schedule_with_warmup(optimizer, args.warmup_steps, args.total_train_steps)
+    lr_schedule = get_linear_schedule_with_warmup(optimizer, args.warmup_steps, args.total_train_steps)
     train_data = DataLoader(vocabs, args.train_data, args.per_gpu_train_batch_size,
                             for_train=True, rank=local_rank, num_replica=args.world_size)
     global_step, step, epoch = 0, 0, 0
@@ -100,9 +133,9 @@ def main(args, local_rank):
     while global_step <= args.total_train_steps:
         for batch in train_data:
             batch = move_to_device(batch, device)
-            loss, acc = model(batch)
-            tr_stat.update({'loss':loss.item() * batch['tgt_num_tokens'],
-                            'tokens':batch['tgt_num_tokens'],
+            loss, acc, bsz = model(batch['src_tokens'], batch['tgt_tokens'])
+            tr_stat.update({'loss':loss.item() * bsz,
+                            'nsamples': bsz,
                             'acc':acc})
             tr_stat.step()
             loss.backward()
@@ -122,14 +155,22 @@ def main(args, local_rank):
 
             if args.world_size == 1 or (dist.get_rank() == 0):
                 if global_step % args.print_every == -1 % args.print_every:
-                    logger.info("epoch %d, step %d, loss %.3f, acc %.3f", epoch, global_step, tr_stat['loss']/tr_stat['tokens'], tr_stat['acc']/tr_stat['tokens'])
+                    logger.info("epoch %d, step %d, loss %.3f, acc %.3f", epoch, global_step, tr_stat['loss']/tr_stat['nsamples'], tr_stat['acc']/tr_stat['nsamples'])
                     tr_stat = Statistics()
                 if global_step > args.warmup_steps and global_step % args.eval_every == -1 % args.eval_every:
+                    dev_stat = Statistics()
                     model.eval()
                     dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False) 
-                    bleu = validate(model, dev_data, beam_size=5, alpha=0.6, max_time_step=100)
-                    logger.info("epoch %d, step %d, dev bleu %.2f", epoch, global_step, bleu)
-                    torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_devbleu%.2f'%(args.ckpt, epoch, global_step, bleu))
+                    for batch in train_data:
+                        batch = move_to_device(batch, device)
+                        loss, acc, bsz = model(batch['src_tokens'], batch['tgt_tokens'])
+                        dev_stat.update({'loss':loss.item() * bsz,
+                            'nsamples': bsz,
+                            'acc':acc})
+                        dev_stat.step()
+ 
+                    logger.info("epoch %d, step %d, dev loss %.2f, dev acc %.2f", epoch, global_step, dev_stat['loss']/dev_stat['nsamples'], dev_stat['acc']/dev_stat['nsamples'])
+                    torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_acc%.2f'%(args.ckpt, epoch, global_step, dev_stat['acc']/dev_stat['nsamples']))
                     model.train()
             if global_step > args.total_train_steps:
                 break

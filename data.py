@@ -151,7 +151,7 @@ def batchify(data, vocabs):
             all_mem_scores.extend([score for _, score in t])
 
         ret['all_mem_tokens'] = ListsToTensor(all_mem_tokens, vocabs['tgt'])
-        # to avoid GPU OOM issue, truncate the mem to the max. length of 1.5 x src_token
+        # to avoid GPU OOM issue, truncate the mem to the max. length of 1.5 x src_tokens
         max_mem_len = int(1.5 * src_token.shape[0])
         ret['all_mem_tokens'] = ret['all_mem_tokens'][:max_mem_len,:]
         ret['all_mem_scores'] = np.array(all_mem_scores)

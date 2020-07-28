@@ -7,5 +7,6 @@ python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${data
         --world_size 4 \
         --gpus 4 \
         --arch mem \
+        --mem_dropout 0.6 \
         --dev_batch_size 2048 \
         --per_gpu_train_batch_size 2048
