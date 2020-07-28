@@ -66,6 +66,7 @@ def _back_to_txt_for_check(tensor, vocab, local_idx2token=None):
             txt.append(tok)
         txt = ' '.join(txt)
         print (txt)
+    print ('-'*55)
 
 def ListsToTensor(xs, vocab=None, local_vocabs=None):
     pad = vocab.padding_idx if vocab else 0
@@ -87,20 +88,6 @@ def ListsToTensor(xs, vocab=None, local_vocabs=None):
         y = toIdx(x, i) + [pad]*(max_len-len(x))
         ys.append(y)
     data = np.transpose(np.array(ys))
-    return data
-
-def ListsofStringToTensor(xs, vocab, max_string_len=20):
-    max_len = max(len(x) for x in xs)
-    ys = []
-    for x in xs:
-        y = x + [PAD]*(max_len -len(x))
-        zs = []
-        for z in y:
-            z = list(z[:max_string_len])
-            zs.append(vocab.token2idx([STR]+z+[END]) + [vocab.padding_idx]*(max_string_len - len(z)))
-        ys.append(zs)
-
-    data = np.transpose(np.array(ys), (1, 0, 2))
     return data
 
 def ArraysToTensor(xs):
@@ -128,7 +115,7 @@ def batchify(data, vocabs):
 
     not_padding = (tgt_token_out != vocabs['tgt'].padding_idx).astype(np.int64)
     tgt_lengths = np.sum(not_padding, axis=0)
-    tgt_num_tokens = np.sum(tgt_lengths)
+    tgt_num_tokens = int(np.sum(tgt_lengths))
 
 
     #not_padding = (src_token != vocabs['src'].padding_idx).astype(np.int64)
@@ -139,10 +126,37 @@ def batchify(data, vocabs):
         'tgt_tokens_in': tgt_token_in,
         'tgt_tokens_out': tgt_token_out,
         'tgt_num_tokens': tgt_num_tokens,
-        'tgt_lengths': tgt_lengths,
+        #'tgt_lengths': tgt_lengths,
         'tgt_raw_sents': [x['tgt_tokens'] for x in data],
         'indices': [x['index'] for x in data]
     }
+
+    # only if there is some memory input
+    if data[0]['mem_sents']:
+        num_mem_sents = len(data[0]['mem_sents'])
+        mem_sents = []
+        for x in data:
+            assert len(x['mem_sents']) == num_mem_sents
+            mem_sents.append(x['mem_sents'])
+        # put all memory tokens (across the same batch) in a single list:
+        # No.1 memory for sentence 1, ..., No.1 memory for sentence N, No.2 memory for sentence 1, ...
+        # then convert to tensors:
+        # all_mem_tokens -> seq_len x ( num_mem_sents_per_instance * bsz )
+        # all_mem_scores -> num_mem_sents_per_instance * bsz
+        all_mem_tokens = []
+        all_mem_scores = []
+        for t in zip(*mem_sents):
+            assert len(t) == len(data), (len(t), len(data))
+            all_mem_tokens.extend([tokens+[EOS] for tokens, _ in t])
+            all_mem_scores.extend([score for _, score in t])
+
+        ret['all_mem_tokens'] = ListsToTensor(all_mem_tokens, vocabs['tgt'])
+        # to avoid GPU OOM issue, truncate the mem to the max. length of 1.5 x src_token
+        max_mem_len = int(1.5 * src_token.shape[0])
+        ret['all_mem_tokens'] = ret['all_mem_tokens'][:max_mem_len,:]
+        ret['all_mem_scores'] = np.array(all_mem_scores)
+        ret['num_mem_sents_per_instance'] = num_mem_sents
+
     return ret
 
 class DataLoader(object):
@@ -153,17 +167,22 @@ class DataLoader(object):
 
         src_tokens, tgt_tokens = [], []
         src_sizes, tgt_sizes = [], []
+        mem_sents = []
         for line in open(filename).readlines()[rank::num_replica]:
-            src, tgt = line.strip().split('\t')
+            src, tgt, *mem = line.strip().split('\t')
             src, tgt = src.split()[:max_seq_len], tgt.split()[:max_seq_len]
             src_sizes.append(len(src))
             tgt_sizes.append(len(tgt))
             src_tokens.append(src)
             tgt_tokens.append(tgt)
+
+            mem_sents.append([(ref.split()[:max_seq_len], float(score)) for ref, score in zip(mem[:-1:2], mem[1::2])])
+
         self.src = src_tokens
         self.tgt = tgt_tokens
         self.src_sizes = np.array(src_sizes)
         self.tgt_sizes = np.array(tgt_sizes)
+        self.mem = mem_sents
         logger.info("(DataLoader rank %d) read %s file with %d paris. max src len: %d, max tgt len: %d", rank, filename, len(self.src), self.src_sizes.max(), self.tgt_sizes.max())
 
     def __len__(self):
@@ -199,17 +218,18 @@ class DataLoader(object):
             for i in batch:
                 src_tokens = self.src[i]
                 tgt_tokens = self.tgt[i]
-                item = {'src_tokens':src_tokens, 'tgt_tokens':tgt_tokens, 'index':i}
+                mem_sents = self.mem[i]
+                item = {'src_tokens':src_tokens, 'tgt_tokens':tgt_tokens, 'mem_sents':mem_sents, 'index':i}
                 data.append(item)
             yield batchify(data, self.vocabs)
 
 def parse_config():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--src_vocab', type=str, default='de.vocab')
+    parser.add_argument('--src_vocab', type=str, default='es.vocab')
     parser.add_argument('--tgt_vocab', type=str, default='en.vocab')
 
-    parser.add_argument('--train_data', type=str, default='train.txt')
+    parser.add_argument('--train_data', type=str, default='dev.mem.txt')
     parser.add_argument('--train_batch_size', type=int, default=4096)
 
     return parser.parse_args()
@@ -224,14 +244,17 @@ if __name__ == '__main__':
     for d in train_data:
         d = move_to_device(d, torch.device('cpu'))
         for k, v in d.items():
+            if 'raw' in k:
+                continue
             try:
-                print (k, v.size())
+                print (k, v.shape)
             except:
                 print (k, v)
-        print (d['tgt_lengths'])
         _back_to_txt_for_check(d['src_tokens'][:,5:6], vocabs['src'])
         _back_to_txt_for_check(d['tgt_tokens_in'][:,5:6], vocabs['tgt'])
         _back_to_txt_for_check(d['tgt_tokens_out'][:,5:6], vocabs['tgt'])
+        bsz = d['tgt_tokens_out'].size(1)
+        _back_to_txt_for_check(d['all_mem_tokens'][:,5::bsz], vocabs['tgt'])
         break
 
 

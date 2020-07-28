@@ -7,7 +7,7 @@ import torch.distributed as dist
 from data import Vocab, DataLoader, BOS, EOS
 from optim import Adam, get_inverse_sqrt_schedule_with_warmup
 from utils import move_to_device, set_seed, average_gradients, Statistics
-from generator import Generator
+from generator import Generator, MemGenerator
 from work import validate
 
 def parse_config():
@@ -17,11 +17,13 @@ def parse_config():
     parser.add_argument('--tgt_vocab', type=str, default='en.vocab')
 
     # architecture
+    parser.add_argument('--arch', type=str, choices=['vanilla', 'mem'], default='vanilla')
     parser.add_argument('--embed_dim', type=int, default=512)
     parser.add_argument('--ff_embed_dim', type=int, default=2048)
     parser.add_argument('--num_heads', type=int, default=8)
     parser.add_argument('--enc_layers', type=int, default=6)
     parser.add_argument('--dec_layers', type=int, default=6)
+    parser.add_argument('--mem_enc_layers', type=int, default=4)
 
     # dropout / label_smoothing
     parser.add_argument('--dropout', type=float, default=0.1)
@@ -68,12 +70,20 @@ def main(args, local_rank):
     set_seed(19940117)
 
     #device = torch.device('cpu')
+    torch.cuda.set_device(local_rank)
     device = torch.device('cuda', local_rank)
-    model = Generator(vocabs,
-            args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout,
-            args.enc_layers, args.dec_layers, args.label_smoothing,
-            device)
     
+    if args.arch == 'vanilla':
+        model = Generator(vocabs,
+                args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout,
+                args.enc_layers, args.dec_layers, args.label_smoothing,
+                device)
+    elif args.arch == 'mem':
+        model = MemGenerator(vocabs,
+                args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout,
+                args.enc_layers, args.dec_layers, args.mem_enc_layers, args.label_smoothing,
+                device)
+
     if args.world_size > 1:
         set_seed(19940117 + dist.get_rank())
 
@@ -85,10 +95,10 @@ def main(args, local_rank):
     global_step, step, epoch = 0, 0, 0
     tr_stat = Statistics()
     logger.info("start training")
+    model.train()
     while global_step <= args.total_train_steps:
         for batch in train_data:
             batch = move_to_device(batch, device)
-            model.train()
             loss, acc = model(batch)
             tr_stat.update({'loss':loss.item() * batch['tgt_num_tokens'],
                             'tokens':batch['tgt_num_tokens'],

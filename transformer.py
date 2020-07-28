@@ -24,22 +24,14 @@ class TransformerLayer(nn.Module):
     def __init__(self, embed_dim, ff_embed_dim, num_heads, dropout, with_external=False, weights_dropout=True):
         super(TransformerLayer, self).__init__()
         self.self_attn = MultiheadAttention(embed_dim, num_heads, dropout, weights_dropout)
-        self.fc1 = nn.Linear(embed_dim, ff_embed_dim)
-        self.fc2 = nn.Linear(ff_embed_dim, embed_dim)
         self.attn_layer_norm = nn.LayerNorm(embed_dim)
+        self.ff_layer = FeedForwardLayer(embed_dim, ff_embed_dim, dropout)
         self.ff_layer_norm = nn.LayerNorm(embed_dim)
         self.with_external = with_external
         self.dropout = dropout
         if self.with_external:
             self.external_attn = MultiheadAttention(embed_dim, num_heads, dropout, weights_dropout)
             self.external_layer_norm = nn.LayerNorm(embed_dim)
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        nn.init.normal_(self.fc1.weight, std=0.02)
-        nn.init.normal_(self.fc2.weight, std=0.02)
-        nn.init.constant_(self.fc1.bias, 0.)
-        nn.init.constant_(self.fc2.bias, 0.)
 
     def forward(self, x, kv = None,
                 self_padding_mask = None, self_attn_mask = None,
@@ -64,12 +56,31 @@ class TransformerLayer(nn.Module):
             external_attn = None
 
         residual = x
-        x = F.relu(self.fc1(x))
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        x = self.fc2(x)
+        x = self.ff_layer(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.ff_layer_norm(residual + x)
         return x, self_attn, external_attn
+
+class FeedForwardLayer(nn.Module):
+
+    def __init__(self, embed_dim, ff_embed_dim, dropout):
+        super(FeedForwardLayer, self).__init__()
+        self.fc1 = nn.Linear(embed_dim, ff_embed_dim)
+        self.fc2 = nn.Linear(ff_embed_dim, embed_dim)
+        self.dropout = dropout
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.normal_(self.fc1.weight, std=0.02)
+        nn.init.normal_(self.fc2.weight, std=0.02)
+        nn.init.constant_(self.fc1.bias, 0.)
+        nn.init.constant_(self.fc2.bias, 0.)
+    
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.fc2(x)
+        return x
 
 class MultiheadAttention(nn.Module):
 
@@ -95,7 +106,7 @@ class MultiheadAttention(nn.Module):
         nn.init.constant_(self.in_proj_bias, 0.)
         nn.init.constant_(self.out_proj.bias, 0.)
 
-    def forward(self, query, key, value, key_padding_mask=None, attn_mask=None, need_weights=None):
+    def forward(self, query, key, value, key_padding_mask=None, attn_mask=None, need_weights=None, attn_bias=None):
         """ Input shape: Time x Batch x Channel
             key_padding_mask: Time x batch
             attn_mask:  tgt_len x src_len
@@ -130,6 +141,8 @@ class MultiheadAttention(nn.Module):
 
         attn_weights = torch.bmm(q, k.transpose(1, 2))
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
+        if attn_bias is not None:
+            attn_weights = attn_weights + attn_bias.unsqueeze(0).unsqueeze(1)
 
         if attn_mask is not None:
             attn_weights.masked_fill_(
@@ -270,8 +283,8 @@ class SinusoidalPositionalEmbedding(nn.Module):
         return emb
 
     def forward(self, input, offset=0):
-        """Input is expected to be of size [seq_len x bsz]."""
-        seq_len, bsz = input.size()
+        """Input is expected to be of size [seq_len x bsz x (...)]."""
+        seq_len, *dims = input.size()
         mx_position = seq_len + offset
         if self.weights is None or mx_position > self.weights.size(0):
             # recompute/expand embeddings if needed
@@ -281,5 +294,7 @@ class SinusoidalPositionalEmbedding(nn.Module):
             )
 
         positions = offset + torch.arange(seq_len)
-        res = self.weights.index_select(0, positions).unsqueeze(1).to(self.device).detach()
+        shape = [1] * len(dims)
+        shape = [seq_len] + shape + [-1]
+        res = self.weights.index_select(0, positions).view(shape).to(self.device).detach()
         return res

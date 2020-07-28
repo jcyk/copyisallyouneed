@@ -4,7 +4,7 @@ import json, re
 import numpy as np
 
 from data import Vocab, DataLoader, BOS, EOS
-from generator import Generator
+from generator import Generator, MemGenerator
 from utils import move_to_device
 import argparse, os
 
@@ -74,7 +74,12 @@ if __name__ == "__main__":
     else:
         device = torch.device('cuda', args.device)
 
-    model = Generator(vocabs,
+    if model_args.arch == 'mem':
+        model = MemGenerator(vocabs,
+            model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout,
+            model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing, device)
+    else:
+        model = Generator(vocabs,
             model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout,
             model_args.enc_layers, model_args.dec_layers, model_args.label_smoothing,
             device)
