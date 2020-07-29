@@ -132,7 +132,7 @@ def search_by_batch(model, beams, mem_dict):
         prepare state_dict and next token,
         output them as one batch
         '''
-        inp = model.prepare_incremental_input([hyp.seq[-1:] for hyp in hypotheses])
+        inp = model.prepare_incremental_input([hyp.seq[-1:] for hyp in hypotheses]).cuda()
         concat_hyps= dict()
         for hyp in hypotheses:
             for k, v in hyp.state_dict.items():

@@ -219,7 +219,7 @@ def Embedding(num_embeddings, embedding_dim, padding_idx):
     return m
 
 class SelfAttentionMask(nn.Module):
-    def __init__(self, init_size=100, device = 0):
+    def __init__(self, init_size=100):
         super(SelfAttentionMask, self).__init__()
         self.weights = SelfAttentionMask.get_mask(init_size)
         self.device = device
@@ -229,19 +229,20 @@ class SelfAttentionMask(nn.Module):
         weights = torch.ones((size, size), dtype = torch.uint8).triu_(1).bool()
         return weights
 
-    def forward(self, size):
+    def forward(self, input, device):
+        """Input is expected to be of size [seq_len x bsz x (...)]."""
+        size = input.size(0)
         if self.weights is None or size > self.weights.size(0):
             self.weights = SelfAttentionMask.get_mask(size)
-        res = self.weights[:size,:size].to(self.device).detach()
+        res = self.weights[:size,:size].to(input.device).detach()
         return res
 
 class LearnedPositionalEmbedding(nn.Module):
     """This module produces LearnedPositionalEmbedding.
     """
-    def __init__(self, embedding_dim, init_size=512, device=0):
+    def __init__(self, embedding_dim, init_size=512):
         super(LearnedPositionalEmbedding, self).__init__()
         self.weights = nn.Embedding(init_size, embedding_dim)
-        self.device= device
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -250,21 +251,20 @@ class LearnedPositionalEmbedding(nn.Module):
     def forward(self, input, offset=0):
         """Input is expected to be of size [seq_len x bsz]."""
         seq_len, bsz = input.size()
-        positions = (offset + torch.arange(seq_len)).cuda(self.device)
+        positions = (offset + torch.arange(seq_len)).cuda(input.device)
         res = self.weights(positions).unsqueeze(1)
         return res
 
 class SinusoidalPositionalEmbedding(nn.Module):
     """This module produces sinusoidal positional embeddings of any length.
     """
-    def __init__(self, embedding_dim, init_size=512, device=0):
+    def __init__(self, embedding_dim, init_size=512):
         super(SinusoidalPositionalEmbedding, self).__init__()
         self.embedding_dim = embedding_dim
         self.weights = SinusoidalPositionalEmbedding.get_embedding(
             init_size,
             embedding_dim
         )
-        self.device= device
 
     @staticmethod
     def get_embedding(num_embeddings, embedding_dim):
@@ -296,5 +296,5 @@ class SinusoidalPositionalEmbedding(nn.Module):
         positions = offset + torch.arange(seq_len)
         shape = [1] * len(dims)
         shape = [seq_len] + shape + [-1]
-        res = self.weights.index_select(0, positions).view(shape).to(self.device).detach()
+        res = self.weights.index_select(0, positions).view(shape).to(input.device).detach()
         return res

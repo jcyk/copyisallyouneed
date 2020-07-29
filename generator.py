@@ -10,11 +10,11 @@ from search import Hypothesis, Beam, search_by_batch
 from utils import move_to_device
 
 class MonoEncoder(nn.Module):
-    def __init__(self, vocab, layers, embed_dim, ff_embed_dim, num_heads, dropout, device):
+    def __init__(self, vocab, layers, embed_dim, ff_embed_dim, num_heads, dropout):
         super(MonoEncoder, self).__init__()
         self.vocab = vocab
         self.src_embed = Embedding(vocab.size, embed_dim, vocab.padding_idx)
-        self.src_pos_embed = SinusoidalPositionalEmbedding(embed_dim, device=device)
+        self.src_pos_embed = SinusoidalPositionalEmbedding(embed_dim)
         self.embed_scale = math.sqrt(embed_dim)
         self.transformer = Transformer(layers, embed_dim, ff_embed_dim, num_heads, dropout)
         self.dropout = dropout
@@ -30,21 +30,20 @@ class MonoEncoder(nn.Module):
 class Generator(nn.Module):
     def __init__(self, vocabs,
                 embed_dim, ff_embed_dim, num_heads, dropout,
-                enc_layers, dec_layers, label_smoothing, device):
+                enc_layers, dec_layers, label_smoothing):
         super(Generator, self).__init__()
         self.vocabs = vocabs
 
-        self.encoder = MonoEncoder(vocabs['src'], enc_layers, embed_dim, ff_embed_dim, num_heads, dropout, device)
+        self.encoder = MonoEncoder(vocabs['src'], enc_layers, embed_dim, ff_embed_dim, num_heads, dropout)
 
         self.tgt_embed = Embedding(vocabs['tgt'].size, embed_dim, vocabs['tgt'].padding_idx)
-        self.tgt_pos_embed = SinusoidalPositionalEmbedding(embed_dim, device=device)
+        self.tgt_pos_embed = SinusoidalPositionalEmbedding(embed_dim)
         self.decoder = Transformer(dec_layers, embed_dim, ff_embed_dim, num_heads, dropout, with_external=True)
         
         self.embed_scale = math.sqrt(embed_dim)
-        self.self_attn_mask = SelfAttentionMask(device=device)
+        self.self_attn_mask = SelfAttentionMask()
         self.output = TokenDecoder(vocabs, self.tgt_embed, label_smoothing)
         self.dropout = dropout
-        self.device = device
 
     def encode_step(self, inp):
         src_repr, src_mask = self.encoder(inp['src_tokens'])
@@ -52,7 +51,6 @@ class Generator(nn.Module):
 
     def prepare_incremental_input(self, step_seq):
         token = ListsToTensor(step_seq, self.vocabs['tgt'])
-        token= move_to_device(token, self.device)
         return token
 
     def decode_step(self, step_token, state_dict, mem_dict, offset, topk): 
@@ -126,23 +124,22 @@ class Generator(nn.Module):
 class MemGenerator(nn.Module):
     def __init__(self, vocabs,
                 embed_dim, ff_embed_dim, num_heads, dropout, mem_dropout,
-                enc_layers, dec_layers, mem_enc_layers, label_smoothing, device):
+                enc_layers, dec_layers, mem_enc_layers, label_smoothing):
         super(MemGenerator, self).__init__()
         self.vocabs = vocabs
 
-        self.encoder = MonoEncoder(vocabs['src'], enc_layers, embed_dim, ff_embed_dim, num_heads, dropout, device)
+        self.encoder = MonoEncoder(vocabs['src'], enc_layers, embed_dim, ff_embed_dim, num_heads, dropout)
 
         self.tgt_embed = Embedding(vocabs['tgt'].size, embed_dim, vocabs['tgt'].padding_idx)
-        self.tgt_pos_embed = SinusoidalPositionalEmbedding(embed_dim, device=device)
+        self.tgt_pos_embed = SinusoidalPositionalEmbedding(embed_dim)
         self.decoder = Transformer(dec_layers, embed_dim, ff_embed_dim, num_heads, dropout, with_external=True)
         
-        self.mem_encoder = MonoEncoder(vocabs['tgt'], mem_enc_layers, embed_dim, ff_embed_dim, num_heads, mem_dropout, device)
+        self.mem_encoder = MonoEncoder(vocabs['tgt'], mem_enc_layers, embed_dim, ff_embed_dim, num_heads, mem_dropout)
         
         self.embed_scale = math.sqrt(embed_dim)
-        self.self_attn_mask = SelfAttentionMask(device=device)
+        self.self_attn_mask = SelfAttentionMask()
         self.output = CopyTokenDecoder(vocabs, self.tgt_embed, label_smoothing, embed_dim, ff_embed_dim, dropout)
         self.dropout = dropout
-        self.device = device
 
     def encode_step(self, inp):
 
@@ -160,7 +157,6 @@ class MemGenerator(nn.Module):
 
     def prepare_incremental_input(self, step_seq):
         token = ListsToTensor(step_seq, self.vocabs['tgt'])
-        token= move_to_device(token, self.device)
         return token
 
     def decode_step(self, step_token, state_dict, mem_dict, offset, topk): 
@@ -230,7 +226,7 @@ class MemGenerator(nn.Module):
         tgt_in_repr = self.embed_scale * self.tgt_embed(data['tgt_tokens_in']) + self.tgt_pos_embed(data['tgt_tokens_in'])
         tgt_in_repr = F.dropout(tgt_in_repr, p=self.dropout, training=self.training)
         tgt_in_mask = torch.eq(data['tgt_tokens_in'], self.vocabs['tgt'].padding_idx)
-        attn_mask = self.self_attn_mask(data['tgt_tokens_in'].size(0))
+        attn_mask = self.self_attn_mask(data['tgt_tokens_in'])
 
         tgt_out = self.decoder(tgt_in_repr,
                                   self_padding_mask=tgt_in_mask, self_attn_mask=attn_mask,

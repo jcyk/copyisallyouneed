@@ -78,13 +78,11 @@ def main(args, local_rank):
     if args.arch == 'vanilla':
         model = Generator(vocabs,
                 args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout,
-                args.enc_layers, args.dec_layers, args.label_smoothing,
-                device)
+                args.enc_layers, args.dec_layers, args.label_smoothing)
     elif args.arch == 'mem':
         model = MemGenerator(vocabs,
                 args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.mem_dropout,
-                args.enc_layers, args.dec_layers, args.mem_enc_layers, args.label_smoothing,
-                device)
+                args.enc_layers, args.dec_layers, args.mem_enc_layers, args.label_smoothing)
 
     if args.world_size > 1:
         set_seed(19940117 + dist.get_rank())

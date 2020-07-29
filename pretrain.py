@@ -120,7 +120,7 @@ def main(args, local_rank):
     torch.cuda.set_device(local_rank)
     device = torch.device('cuda', local_rank)
     
-    model = MatchingModel.from_params(vocabs, args.layers, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.output_dim, device)
+    model = MatchingModel.from_params(vocabs, args.layers, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.output_dim)
 
     if args.world_size > 1:
         set_seed(19940117 + dist.get_rank())
@@ -137,7 +137,7 @@ def main(args, local_rank):
     while global_step <= args.total_train_steps:
         for batch in train_data:
             batch = move_to_device(batch, device)
-            loss, acc, bsz = model(batch['src_tokens'], batch['tgt_tokens'])
+            loss, acc, bsz = model(batch['src_tokens'], batch['tgt_tokens'], args.label_smoothing)
             tr_stat.update({'loss':loss.item() * bsz,
                             'nsamples': bsz,
                             'acc':acc * bsz})
@@ -174,7 +174,8 @@ def main(args, local_rank):
                         dev_stat.step()
  
                     logger.info("epoch %d, step %d, dev loss %.2f, dev acc %.2f", epoch, global_step, dev_stat['loss']/dev_stat['nsamples'], dev_stat['acc']/dev_stat['nsamples'])
-                    model.save('%s/epoch%d_batch%d_acc%.2f'%(args.ckpt, epoch, global_step, dev_stat['acc']/dev_stat['nsamples']))
+                    save_path = '%s/epoch%d_batch%d_acc%.2f'%(args.ckpt, epoch, global_step, dev_stat['acc']/dev_stat['nsamples'])
+                    model.save(args, save_path)
                     model.train()
             if global_step > args.total_train_steps:
                 break

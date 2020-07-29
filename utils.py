@@ -89,3 +89,21 @@ def layer_norm(x, variance_epsilon=1e-12):
     s = (x - u).pow(2).mean(-1, keepdim=True)
     x = (x - u) / torch.sqrt(s + variance_epsilon)
     return x
+
+def data_proc(data, queue):
+    for x in data:
+        queue.put(x)
+    queue.put('EPOCHDONE')
+
+def asynchronous_load(data_loader):
+    queue = mp.Queue(10)
+    data_generator = mp.Process(target=data_proc, args=(data_loader, queue))
+    data_generator.start()
+    done = False
+    while not done:
+        batch = queue.get()
+        if isinstance(batch, str):
+            done = True
+        else:
+            yield batch
+    data_generator.join()

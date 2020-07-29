@@ -77,12 +77,11 @@ if __name__ == "__main__":
     if model_args.arch == 'mem':
         model = MemGenerator(vocabs,
             model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout,
-            model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing, device)
+            model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing)
     else:
         model = Generator(vocabs,
             model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout,
-            model_args.enc_layers, model_args.dec_layers, model_args.label_smoothing,
-            device)
+            model_args.enc_layers, model_args.dec_layers, model_args.label_smoothing)
 
     test_data = DataLoader(vocabs, args.test_data, args.test_batch_size, for_train=False)
 
