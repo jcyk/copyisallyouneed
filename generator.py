@@ -34,7 +34,7 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         self.vocabs = vocabs
 
-        self.encoder = MonoEncoder(vocab['src'], enc_layers, embed_dim, ff_embed_dim, num_heads, dropout, device)
+        self.encoder = MonoEncoder(vocabs['src'], enc_layers, embed_dim, ff_embed_dim, num_heads, dropout, device)
 
         self.tgt_embed = Embedding(vocabs['tgt'].size, embed_dim, vocabs['tgt'].padding_idx)
         self.tgt_pos_embed = SinusoidalPositionalEmbedding(embed_dim, device=device)
@@ -130,13 +130,13 @@ class MemGenerator(nn.Module):
         super(MemGenerator, self).__init__()
         self.vocabs = vocabs
 
-        self.encoder = MonoEncoder(vocab['src'], enc_layers, embed_dim, ff_embed_dim, num_heads, dropout, device)
+        self.encoder = MonoEncoder(vocabs['src'], enc_layers, embed_dim, ff_embed_dim, num_heads, dropout, device)
 
         self.tgt_embed = Embedding(vocabs['tgt'].size, embed_dim, vocabs['tgt'].padding_idx)
         self.tgt_pos_embed = SinusoidalPositionalEmbedding(embed_dim, device=device)
         self.decoder = Transformer(dec_layers, embed_dim, ff_embed_dim, num_heads, dropout, with_external=True)
         
-        self.mem_encoder = MonoEncoder(vocab['tgt'], mem_enc_layers, embed_dim, ff_embed_dim, num_heads, mem_dropout, device)
+        self.mem_encoder = MonoEncoder(vocabs['tgt'], mem_enc_layers, embed_dim, ff_embed_dim, num_heads, mem_dropout, device)
         
         self.embed_scale = math.sqrt(embed_dim)
         self.self_attn_mask = SelfAttentionMask(device=device)

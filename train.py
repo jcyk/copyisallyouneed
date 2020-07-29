@@ -65,6 +65,7 @@ def main(args, local_rank):
     vocabs['tgt'] = Vocab(args.tgt_vocab, 0, [BOS, EOS])
 
     if args.world_size == 1 or (dist.get_rank() == 0):
+        logger.info(args)
         for name in vocabs:
             logger.info("vocab %s, size %d, coverage %.3f", name, vocabs[name].size, vocabs[name].coverage)
 

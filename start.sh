@@ -6,5 +6,6 @@ export https_proxy="https://10.222.13.250:32810"
 export http_proxy="http://10.222.13.250:32810"
 
 pip3 install sacrebleu
-sh train.sh
+sh pretrain.sh
+#sh train.sh
 #sh work.sh

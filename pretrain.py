@@ -5,10 +5,13 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 import numpy as np
 
-from data import Vocab, BOS, EOS, ListsToTensor
+from data import Vocab, BOS, EOS, ListsToTensor, _back_to_txt_for_check
 from optim import Adam, get_linear_schedule_with_warmup
 from utils import move_to_device, set_seed, average_gradients, Statistics
 from retriever import MatchingModel
+
+
+logger = logging.getLogger(__name__)
 
 def parse_config():
     parser = argparse.ArgumentParser()
@@ -20,13 +23,15 @@ def parse_config():
     parser.add_argument('--embed_dim', type=int, default=512)
     parser.add_argument('--ff_embed_dim', type=int, default=2048)
     parser.add_argument('--num_heads', type=int, default=8)
-    parser.add_argument('--layers', type=int, default=6)
+    parser.add_argument('--layers', type=int, default=4)
+    parser.add_argument('--output_dim', type=int, default=256)
 
     # dropout / label_smoothing
     parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--label_smoothing', type=float, default=0.1)
 
     # training
+    parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1)
     parser.add_argument('--total_train_steps', type=int, default=100000)
     parser.add_argument('--warmup_steps', type=int, default=4000)
@@ -78,7 +83,6 @@ class DataLoader(object):
 
         self.src = src_tokens
         self.tgt = tgt_tokens
-        logger.info("(DataLoader rank %d) read %s file with %d paris.", rank, filename, len(self.src))
 
     def __len__(self):
         return len(self.src)
@@ -100,13 +104,13 @@ def main(args, local_rank):
     logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
                     level=logging.INFO)
-    logger = logging.getLogger(__name__)
 
     vocabs = dict()
     vocabs['src'] = Vocab(args.src_vocab, 0, [EOS])
     vocabs['tgt'] = Vocab(args.tgt_vocab, 0, [BOS, EOS])
 
     if args.world_size == 1 or (dist.get_rank() == 0):
+        logger.info(args)
         for name in vocabs:
             logger.info("vocab %s, size %d, coverage %.3f", name, vocabs[name].size, vocabs[name].coverage)
 
@@ -116,16 +120,16 @@ def main(args, local_rank):
     torch.cuda.set_device(local_rank)
     device = torch.device('cuda', local_rank)
     
-    model = MatchingModel.from_params(vocabs, layers, embed_dim, ff_embed_dim, num_heads, dropout, output_dim)
+    model = MatchingModel.from_params(vocabs, args.layers, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.output_dim, device)
 
     if args.world_size > 1:
         set_seed(19940117 + dist.get_rank())
 
     model = model.to(device)
-    optimizer = Adam(model.parameters(), lr=args.embed_dim**-0.5, betas=(0.9, 0.98), eps=1e-9)
+    optimizer = Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98), eps=1e-9)
     lr_schedule = get_linear_schedule_with_warmup(optimizer, args.warmup_steps, args.total_train_steps)
     train_data = DataLoader(vocabs, args.train_data, args.per_gpu_train_batch_size,
-                            for_train=True, rank=local_rank, num_replica=args.world_size)
+                            for_train=True)
     global_step, step, epoch = 0, 0, 0
     tr_stat = Statistics()
     logger.info("start training")
@@ -136,7 +140,7 @@ def main(args, local_rank):
             loss, acc, bsz = model(batch['src_tokens'], batch['tgt_tokens'])
             tr_stat.update({'loss':loss.item() * bsz,
                             'nsamples': bsz,
-                            'acc':acc})
+                            'acc':acc * bsz})
             tr_stat.step()
             loss.backward()
 
@@ -166,11 +170,11 @@ def main(args, local_rank):
                         loss, acc, bsz = model(batch['src_tokens'], batch['tgt_tokens'])
                         dev_stat.update({'loss':loss.item() * bsz,
                             'nsamples': bsz,
-                            'acc':acc})
+                            'acc':acc * bsz})
                         dev_stat.step()
  
                     logger.info("epoch %d, step %d, dev loss %.2f, dev acc %.2f", epoch, global_step, dev_stat['loss']/dev_stat['nsamples'], dev_stat['acc']/dev_stat['nsamples'])
-                    torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_acc%.2f'%(args.ckpt, epoch, global_step, dev_stat['acc']/dev_stat['nsamples']))
+                    model.save('%s/epoch%d_batch%d_acc%.2f'%(args.ckpt, epoch, global_step, dev_stat['acc']/dev_stat['nsamples']))
                     model.train()
             if global_step > args.total_train_steps:
                 break

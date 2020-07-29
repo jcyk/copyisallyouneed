@@ -20,9 +20,12 @@ class MatchingModel(nn.Module):
         '''
         _, bsz = query.size()
         
+        q = self.query_encoder(query)
+        r = self.response_encoder(response)
+ 
         scores = torch.mm(q, r.t()) # bsz x bsz
 
-        gold = torch.arange(bsz).to(scores.device)
+        gold = torch.arange(bsz, device=scores.device)
         _, pred = torch.max(scores, -1)
         acc = torch.sum(torch.eq(gold, pred).float()) / bsz
 
@@ -30,7 +33,7 @@ class MatchingModel(nn.Module):
         loss, _ = label_smoothed_nll_loss(log_probs, gold, 0.1, sum=True)
         loss = loss / bsz
 
-        return {'loss':loss, 'acc':acc, 'bsz':bsz}
+        return loss, acc, bsz
 
     def work(self, query, response):
         ''' query and response: [seq_len x batch_size ]
@@ -60,6 +63,7 @@ class MatchingModel(nn.Module):
 
 class ProjEncoder(nn.Module):
     def __init__(self, vocab, layers, embed_dim, ff_embed_dim, num_heads, dropout, output_dim, device):
+        super(ProjEncoder, self).__init__()
         self.encoder = MonoEncoder(vocab, layers, embed_dim, ff_embed_dim, num_heads, dropout, device)
         self.proj = nn.Linear(embed_dim, output_dim)
         self.reset_parameters()
@@ -72,6 +76,4 @@ class ProjEncoder(nn.Module):
         ret, _ = self.encoder(input_ids) 
         ret = ret[0,:,:]
         ret = layer_norm(self.proj(ret))
-
-
-
+        return ret
