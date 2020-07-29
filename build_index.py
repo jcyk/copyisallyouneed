@@ -6,8 +6,8 @@ import numpy as np
 
 from mips import MIPS, augment_data
 from utils import move_to_device, asynchronous_load
-from retriever import MathchingModel
-from data import Vocab
+from retriever import ProjEncoder
+from data import Vocab, BOS, EOS, ListsToTensor
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ def parse_args():
     parser.add_argument('--input_file', type=str)
     parser.add_argument('--args_path', type=str)
     parser.add_argument('--ckpt_path', type=str)
-    parser.add_argument('--vocab', type=str)
+    parser.add_argument('--vocab_path', type=str)
 
     parser.add_argument('--index_path', type=str,
         help='can be saving path if train_index == True else loading path')
@@ -57,7 +57,8 @@ class DataLoader(object):
         data = []
         for x in used_data:
             x = x.split()[:max_seq_len]
-            self.data.append(x)s
+            data.append(x)
+        self.data = data
 
     def __len__(self):
         return len(self.data)
@@ -72,20 +73,21 @@ class DataLoader(object):
             yield batchify(data, self.vocab)
 
 @torch.no_grad()
-def get_features(args, model, used_data, used_ids, max_norm=None, max_norm_cf=1.0):
-    cur = 0
+def get_features(args, vocab, model, used_data, used_ids, max_norm=None, max_norm_cf=1.0):
     vecs, ids = [], []
     model = torch.nn.DataParallel(model, device_ids=list(range(torch.cuda.device_count())))
     model.eval()
     data_loader = DataLoader(used_data, vocab, args.batch_size)
+    cur, tot = 0, len(used_data)
     for batch in asynchronous_load(data_loader):
-        batch = move_to_device(batch, torch.device('cuda', 0))
-        bsz = batch.size(1)
-        cur_vecs = model(batch).detach().cpu().numpy()
+        batch = move_to_device(batch, torch.device('cuda', 0)).t()
+        bsz = batch.size(0)
+        cur_vecs = model(batch, batch_first=True).detach().cpu().numpy()
         valid = np.linalg.norm(cur_vecs, axis=1) <= args.norm_th
         vecs.append(cur_vecs[valid])
         ids.append(used_ids[cur:cur+args.batch_size][valid])
         cur += bsz
+        logger.info("%d / %d", cur, tot)
     vecs = np.concatenate(vecs, 0)
     ids = np.concatenate(ids, 0)
     out, max_norm = augment_data(vecs, max_norm, max_norm_cf)
@@ -98,9 +100,9 @@ def main(args):
     logger.info("using %d gpus", torch.cuda.device_count())
     device = torch.device('cuda', 0)
 
-    vocab = Vocab(args.vocab, 0, [BOS, EOS])
-    model_args = torch.load(os.path.join(input_dir, 'args'))
-    model = ProjEncoder.from_pretrained(vocab, model_args, ckpt)
+    vocab = Vocab(args.vocab_path, 0, [BOS, EOS])
+    model_args = torch.load(args.args_path)
+    model = ProjEncoder.from_pretrained(vocab, model_args, args.ckpt_path)
     model.to(device)
 
     logger.info('Collecting data...')
@@ -119,9 +121,9 @@ def main(args):
         used_data = [x[0] for x in data[:args.max_training_instances]]
         used_ids = np.array([x[1] for x in data[:args.max_training_instances]])
         logger.info('Computing feature for training')
-        used_data, _, max_norm = get_features(args, model, used_data, used_ids, max_norm_cf=args.max_norm_cf)
+        used_data, _, max_norm = get_features(args, vocab, model, used_data, used_ids, max_norm_cf=args.max_norm_cf)
         logger.info('Using %d instances for training', used_data.shape[0])
-        mips = MIPS(model.output_dim+1, args.index_type, efSearch=args.efSearch, nprobe=args.nprobe) 
+        mips = MIPS(model_args.output_dim+1, args.index_type, efSearch=args.efSearch, nprobe=args.nprobe) 
         mips.to_gpu()
         mips.train(used_data)
         mips.to_cpu()
@@ -138,7 +140,7 @@ def main(args):
             used_ids = np.array([x[1] for x in data[cur:cur+args.dump_every]])
             cur += args.dump_every
             logger.info('Computing feature for indexing')
-            used_data, used_ids, _ = get_features(args, model, used_data, used_ids, max_norm)
+            used_data, used_ids, _ = get_features(args, vocab, model, used_data, used_ids, max_norm)
             logger.info('Adding %d instances to index', used_data.shape[0])
             mips.add_with_ids(used_data, used_ids)
         mips.save(args.index_path)

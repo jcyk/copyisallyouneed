@@ -165,7 +165,7 @@ def main(args, local_rank):
                     dev_stat = Statistics()
                     model.eval()
                     dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False) 
-                    for batch in train_data:
+                    for batch in dev_data:
                         batch = move_to_device(batch, device)
                         loss, acc, bsz = model(batch['src_tokens'], batch['tgt_tokens'])
                         dev_stat.update({'loss':loss.item() * bsz,

@@ -78,7 +78,9 @@ class ProjEncoder(nn.Module):
         nn.init.normal_(self.proj.weight, std=0.02)
         nn.init.constant_(self.proj.bias, 0.)
 
-    def forward(self, input_ids):
+    def forward(self, input_ids, batch_first=False):
+        if batch_first:
+            input_ids = input_ids.t()
         ret, _ = self.encoder(input_ids) 
         ret = ret[0,:,:]
         ret = F.dropout(ret, p=self.dropout, training=self.training)
@@ -88,5 +90,5 @@ class ProjEncoder(nn.Module):
     @classmethod
     def from_pretrained(cls, vocab, model_args, ckpt):
         model = cls(vocab, model_args.layers, model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.output_dim)
-        model.load_state_dict(ckpt)
+        model.load_state_dict(torch.load(ckpt, map_location='cpu'))
         return model
