@@ -22,8 +22,8 @@ def parse_config():
 
     return parser.parse_args()
 
-def generate_batch(model, batch, beam_size, alpha, max_time_step):
-    batch = move_to_device(batch, model.device)
+def generate_batch(device, model, batch, beam_size, alpha, max_time_step):
+    batch = move_to_device(batch, device)
     token_batch = []
     beams = model.work(batch, beam_size, max_time_step)
     for beam in beams:
@@ -32,13 +32,13 @@ def generate_batch(model, batch, beam_size, alpha, max_time_step):
         token_batch.append(predicted_token)
     return token_batch, batch['indices']
 
-def validate(model, test_data, beam_size=8, alpha=0.6, max_time_step=100):
+def validate(device, model, test_data, beam_size=8, alpha=0.6, max_time_step=100):
     """For development Only"""
 
     ref_stream = []
     sys_stream = []
     for batch in test_data:
-        res, _ = generate_batch(model, batch, beam_size, alpha, max_time_step)
+        res, _ = generate_batch(device, model, batch, beam_size, alpha, max_time_step)
         sys_stream.extend(res)
         ref_stream.extend(batch['tgt_raw_sents'])
     assert len(sys_stream) == len(ref_stream)
@@ -76,7 +76,7 @@ if __name__ == "__main__":
 
     if model_args.arch == 'mem':
         model = MemGenerator(vocabs,
-            model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout,
+            model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.mem_dropout,
             model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing)
     else:
         model = Generator(vocabs,
@@ -90,12 +90,12 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(test_model)['model'])
         model = model.to(device)
         model.eval()
-        bleu = validate(model, test_data, beam_size=args.beam_size, alpha=args.alpha, max_time_step=args.max_time_step)
+        bleu = validate(device, model, test_data, beam_size=args.beam_size, alpha=args.alpha, max_time_step=args.max_time_step)
         print (bleu)
         
         outs, indices = [], []
         for batch in test_data:
-            res, ind = generate_batch(model, batch, args.beam_size, args.alpha, args.max_time_step)
+            res, ind = generate_batch(device, model, batch, args.beam_size, args.alpha, args.max_time_step)
             for out_tokens, index in zip(res, ind):
                 out_line = re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(out_tokens))
                 outs.append(out_line)

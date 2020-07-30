@@ -27,6 +27,7 @@ def parse_config():
     parser.add_argument('--output_dim', type=int, default=256)
 
     # dropout / label_smoothing
+    parser.add_argument('--worddrop', type=float, default=0.33)
     parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--label_smoothing', type=float, default=0.1)
 
@@ -54,13 +55,13 @@ def parse_config():
 
     return parser.parse_args()
 
-def batchify(data, vocabs):
+def batchify(data, vocabs, worddrop):
 
     src_tokens = [[EOS] + x['src_tokens'] for x in data]
     tgt_tokens = [[EOS] + x['tgt_tokens'] for x in data]
 
-    src_token = ListsToTensor(src_tokens, vocabs['src'])
-    tgt_token = ListsToTensor(tgt_tokens, vocabs['tgt'])
+    src_token = ListsToTensor(src_tokens, vocabs['src'], worddrop)
+    tgt_token = ListsToTensor(tgt_tokens, vocabs['tgt'], worddrop)
 
     ret = {
         'src_tokens': src_token,
@@ -69,10 +70,11 @@ def batchify(data, vocabs):
     return ret
 
 class DataLoader(object):
-    def __init__(self, vocabs, filename, batch_size, for_train, max_seq_len=256):
+    def __init__(self, vocabs, filename, batch_size, for_train, worddrop=0., max_seq_len=256):
         self.vocabs = vocabs
         self.batch_size = batch_size
         self.train = for_train
+        self.worddrop = worddrop
 
         src_tokens, tgt_tokens = [], []
         for line in open(filename).readlines():
@@ -97,7 +99,7 @@ class DataLoader(object):
         while cur < len(indices):
             data = [{'src_tokens':self.src[i], 'tgt_tokens':self.tgt[i]} for i in indices[cur:cur+self.batch_size]]
             cur += self.batch_size
-            yield batchify(data, self.vocabs)
+            yield batchify(data, self.vocabs, self.worddrop)
 
 def main(args, local_rank):
 
@@ -128,8 +130,7 @@ def main(args, local_rank):
     model = model.to(device)
     optimizer = Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98), eps=1e-9)
     lr_schedule = get_linear_schedule_with_warmup(optimizer, args.warmup_steps, args.total_train_steps)
-    train_data = DataLoader(vocabs, args.train_data, args.per_gpu_train_batch_size,
-                            for_train=True)
+    train_data = DataLoader(vocabs, args.train_data, args.per_gpu_train_batch_size, worddrop=args.worddrop, for_train=True)
     global_step, step, epoch = 0, 0, 0
     tr_stat = Statistics()
     logger.info("start training")

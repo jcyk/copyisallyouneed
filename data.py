@@ -68,7 +68,7 @@ def _back_to_txt_for_check(tensor, vocab, local_idx2token=None):
         print (txt)
     print ('-'*55)
 
-def ListsToTensor(xs, vocab=None, local_vocabs=None):
+def ListsToTensor(xs, vocab=None, worddrop=0., local_vocabs=None):
     pad = vocab.padding_idx if vocab else 0
 
     def toIdx(w, i):
@@ -76,6 +76,8 @@ def ListsToTensor(xs, vocab=None, local_vocabs=None):
             return w
         if isinstance(w, list):
             return [toIdx(_, i) for _ in w]
+        if random.random() < worddrop:
+            return vocab.unk_idx
         if local_vocabs is not None:
             local_vocab = local_vocabs[i]
             if (local_vocab is not None) and (w in local_vocab):
@@ -154,7 +156,7 @@ def batchify(data, vocabs):
         # to avoid GPU OOM issue, truncate the mem to the max. length of 1.5 x src_tokens
         max_mem_len = int(1.5 * src_token.shape[0])
         ret['all_mem_tokens'] = ret['all_mem_tokens'][:max_mem_len,:]
-        ret['all_mem_scores'] = np.array(all_mem_scores)
+        ret['all_mem_scores'] = np.array(all_mem_scores, dtype=np.float32)
         ret['num_mem_sents_per_instance'] = num_mem_sents
 
     return ret

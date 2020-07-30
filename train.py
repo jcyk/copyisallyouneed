@@ -126,7 +126,7 @@ def main(args, local_rank):
                 if global_step > args.warmup_steps and global_step % args.eval_every == -1 % args.eval_every:
                     model.eval()
                     dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False) 
-                    bleu = validate(model, dev_data, beam_size=5, alpha=0.6, max_time_step=100)
+                    bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=100)
                     logger.info("epoch %d, step %d, dev bleu %.2f", epoch, global_step, bleu)
                     torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_devbleu%.2f'%(args.ckpt, epoch, global_step, bleu))
                     model.train()

@@ -50,7 +50,7 @@ class Generator(nn.Module):
         return src_repr, src_mask
 
     def prepare_incremental_input(self, step_seq):
-        token = ListsToTensor(step_seq, self.vocabs['tgt'])
+        token = torch.from_numpy(ListsToTensor(step_seq, self.vocabs['tgt']))
         return token
 
     def decode_step(self, step_token, state_dict, mem_dict, offset, topk): 
@@ -147,16 +147,17 @@ class MemGenerator(nn.Module):
         mem_repr, mem_mask = self.mem_encoder(inp['all_mem_tokens'])
         # mem_repr -> seq_len x ( num_mem_sents_per_instance * bsz ) x dim
         # mem_mask -> seq_len x ( num_mem_sents_per_instance * bsz )
-        dim = mem_repr.size(-1)
+        seq_len, _, dim = mem_repr.size()
         bsz = src_repr.size(1)
         mem_repr = mem_repr.view(-1, bsz, dim)
         mem_mask = mem_mask.view(-1, bsz)
         copy_seq = inp['all_mem_tokens'].view(-1, bsz)
 
-        return src_repr, src_mask, mem_repr, mem_mask, copy_seq
+        attn_bias = inp['all_mem_scores'].view(1, -1, bsz).expand(seq_len, -1, bsz).reshape(-1, bsz)
+        return src_repr, src_mask, mem_repr, mem_mask, copy_seq, attn_bias
 
     def prepare_incremental_input(self, step_seq):
-        token = ListsToTensor(step_seq, self.vocabs['tgt'])
+        token = torch.from_numpy(ListsToTensor(step_seq, self.vocabs['tgt']))
         return token
 
     def decode_step(self, step_token, state_dict, mem_dict, offset, topk): 
@@ -165,6 +166,7 @@ class MemGenerator(nn.Module):
         mem_repr = mem_dict['mem_encoder_state']
         mem_padding_mask = mem_dict['mem_encoder_state_mask']
         copy_seq = mem_dict['copy_seq']
+        mem_bias = mem_dict['mem_bias']
 
         _, bsz, _ = src_repr.size()
 
@@ -189,7 +191,7 @@ class MemGenerator(nn.Module):
             new_token_state = token_repr
         new_state_dict[name] = new_token_state
 
-        LL = self.output(token_repr, mem_repr, mem_padding_mask, copy_seq, None, work=True)
+        LL = self.output(token_repr, mem_repr, mem_padding_mask, mem_bias, copy_seq, None, work=True)
 
         def idx2token(idx, local_vocab):
             if (local_vocab is not None) and (idx in local_vocab):
@@ -209,12 +211,13 @@ class MemGenerator(nn.Module):
 
     @torch.no_grad()
     def work(self, data, beam_size, max_time_step, min_time_step=1):
-        src_repr, src_mask, mem_repr, mem_mask, copy_seq = self.encode_step(data)
+        src_repr, src_mask, mem_repr, mem_mask, copy_seq, mem_bias = self.encode_step(data)
         mem_dict = {'encoder_state':src_repr,
                     'encoder_state_mask':src_mask,
                     'mem_encoder_state':mem_repr,
                     'mem_encoder_state_mask':mem_mask,
-                    'copy_seq':copy_seq}
+                    'copy_seq':copy_seq,
+                    'mem_bias':mem_bias}
         init_hyp = Hypothesis({}, [BOS], 0.)
         bsz = src_repr.size(1)
         beams = [ Beam(beam_size, min_time_step, max_time_step, [init_hyp]) for i in range(bsz)]
@@ -222,7 +225,7 @@ class MemGenerator(nn.Module):
         return beams
 
     def forward(self, data):
-        src_repr, src_mask, mem_repr, mem_mask, copy_seq = self.encode_step(data)
+        src_repr, src_mask, mem_repr, mem_mask, copy_seq, mem_bias = self.encode_step(data)
         tgt_in_repr = self.embed_scale * self.tgt_embed(data['tgt_tokens_in']) + self.tgt_pos_embed(data['tgt_tokens_in'])
         tgt_in_repr = F.dropout(tgt_in_repr, p=self.dropout, training=self.training)
         tgt_in_mask = torch.eq(data['tgt_tokens_in'], self.vocabs['tgt'].padding_idx)
@@ -232,4 +235,4 @@ class MemGenerator(nn.Module):
                                   self_padding_mask=tgt_in_mask, self_attn_mask=attn_mask,
                                   external_memories=src_repr, external_padding_mask=src_mask)
         
-        return self.output(tgt_out, mem_repr, mem_mask, copy_seq, data)
+        return self.output(tgt_out, mem_repr, mem_mask, mem_bias, copy_seq, data)

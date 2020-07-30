@@ -3,7 +3,7 @@ python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${data
         --dev_data ${dataset}/dev.mem.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --ckpt ${dataset}/ckpt.mem.4gpus.memdrop0.1.new \
+        --ckpt ${dataset}/ckpt.mem.bias.4gpus \
         --world_size 4 \
         --gpus 4 \
         --arch mem \

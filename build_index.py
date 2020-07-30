@@ -121,12 +121,15 @@ def main(args):
         used_data = [x[0] for x in data[:args.max_training_instances]]
         used_ids = np.array([x[1] for x in data[:args.max_training_instances]])
         logger.info('Computing feature for training')
-        used_data, _, max_norm = get_features(args, vocab, model, used_data, used_ids, max_norm_cf=args.max_norm_cf)
+        used_data, used_ids, max_norm = get_features(args, vocab, model, used_data, used_ids, max_norm_cf=args.max_norm_cf)
         logger.info('Using %d instances for training', used_data.shape[0])
         mips = MIPS(model_args.output_dim+1, args.index_type, efSearch=args.efSearch, nprobe=args.nprobe) 
         mips.to_gpu()
         mips.train(used_data)
         mips.to_cpu()
+        if args.add_to_index:
+            mips.add_with_ids(used_data, used_ids)
+            data = data[max_training_instances:]
         mips.save(args.index_path)
         torch.save(max_norm, os.path.join(os.path.dirname(args.index_path), 'max_norm.pt'))
     else:

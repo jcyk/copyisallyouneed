@@ -142,7 +142,9 @@ class MultiheadAttention(nn.Module):
         attn_weights = torch.bmm(q, k.transpose(1, 2))
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
         if attn_bias is not None:
-            attn_weights = attn_weights + attn_bias.unsqueeze(0).unsqueeze(1)
+            attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
+            attn_weights = attn_weights + attn_bias.transpose(0, 1).unsqueeze(1).unsqueeze(2)
+            attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
 
         if attn_mask is not None:
             attn_weights.masked_fill_(
@@ -222,14 +224,13 @@ class SelfAttentionMask(nn.Module):
     def __init__(self, init_size=100):
         super(SelfAttentionMask, self).__init__()
         self.weights = SelfAttentionMask.get_mask(init_size)
-        self.device = device
 
     @staticmethod
     def get_mask(size):
         weights = torch.ones((size, size), dtype = torch.uint8).triu_(1).bool()
         return weights
 
-    def forward(self, input, device):
+    def forward(self, input):
         """Input is expected to be of size [seq_len x bsz x (...)]."""
         size = input.size(0)
         if self.weights is None or size > self.weights.size(0):
@@ -251,7 +252,7 @@ class LearnedPositionalEmbedding(nn.Module):
     def forward(self, input, offset=0):
         """Input is expected to be of size [seq_len x bsz]."""
         seq_len, bsz = input.size()
-        positions = (offset + torch.arange(seq_len)).cuda(input.device)
+        positions = (offset + torch.arange(seq_len)).to(input.device)
         res = self.weights(positions).unsqueeze(1)
         return res
 

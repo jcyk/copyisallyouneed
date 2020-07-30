@@ -51,10 +51,12 @@ class CopyTokenDecoder(nn.Module):
         nn.init.normal_(self.diverter.weight, std=0.02)
         nn.init.constant_(self.diverter.bias, 0.)   
 
-    def forward(self, outs, mem, mem_mask, copy_seq, data, work=False):
+    def forward(self, outs, mem, mem_mask, mem_bias, copy_seq, data, work=False):
+        #mem_bias = None
         attn, alignment_weight = self.alignment_layer(outs, mem, mem,
                                                     key_padding_mask=mem_mask,
-                                                    need_weights='one')
+                                                    need_weights='one',
+                                                    attn_bias=mem_bias)
         attn = F.dropout(attn, p=self.dropout, training=self.training)
         attn_normalized = self.alignment_layer_norm(attn)
 
