@@ -36,26 +36,6 @@ def average_gradients(model):
             dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
             param.grad.data /= size
 
-
-def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, sum=True):
-    if target.dim() == lprobs.dim() - 1:
-        target = target.unsqueeze(-1)
-    nll_loss = -lprobs.gather(dim=-1, index=target)
-    smooth_loss = -lprobs.sum(dim=-1, keepdim=True)
-    if ignore_index is not None:
-        pad_mask = target.eq(ignore_index)
-        nll_loss.masked_fill_(pad_mask, 0.)
-        smooth_loss.masked_fill_(pad_mask, 0.)
-    else:
-        nll_loss = nll_loss.squeeze(-1)
-        smooth_loss = smooth_loss.squeeze(-1)
-    if sum:
-        nll_loss = nll_loss.sum()
-        smooth_loss = smooth_loss.sum()
-    eps_i = epsilon / lprobs.size(-1)
-    loss = (1. - epsilon) * nll_loss + eps_i * smooth_loss
-    return loss, nll_loss
-
 class Statistics:
     def __init__(self, key_value_dict=None, **kwargs):
         self.statistics = {'steps':0}
@@ -83,12 +63,6 @@ class Statistics:
 
     def step(self):
         self.statistics['steps'] += 1
-
-def layer_norm(x, variance_epsilon=1e-12):
-    u = x.mean(-1, keepdim=True)
-    s = (x - u).pow(2).mean(-1, keepdim=True)
-    x = (x - u) / torch.sqrt(s + variance_epsilon)
-    return x
 
 def data_proc(data, queue):
     for x in data:

@@ -66,7 +66,7 @@ if __name__ == "__main__":
         test_models.append(args.load_path)
         model_args = torch.load(args.load_path)['args']
     vocabs = dict()
-    vocabs['src'] = Vocab(model_args.src_vocab, 0, [EOS])
+    vocabs['src'] = Vocab(model_args.src_vocab, 0, [BOS, EOS])
     vocabs['tgt'] = Vocab(model_args.tgt_vocab, 0, [BOS, EOS])
 
     if args.device < 0:

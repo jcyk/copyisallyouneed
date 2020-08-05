@@ -9,7 +9,7 @@ from mips import MIPS, augment_query, l2_to_ip
 from retriever import ProjEncoder
 from build_index import DataLoader 
 from utils import move_to_device, asynchronous_load
-from data import Vocab, EOS
+from data import Vocab, BOS, EOS
 
 logger = logging.getLogger(__name__)
 def parse_args():
@@ -37,7 +37,7 @@ def main(args):
     logger.info('Loading model...')
     device = torch.device('cuda', 0)
     
-    vocab = Vocab(args.vocab_path, 0, [EOS])
+    vocab = Vocab(args.vocab_path, 0, [BOS, EOS])
     model_args = torch.load(args.args_path)
     model = ProjEncoder.from_pretrained(vocab, model_args, args.ckpt_path)
     model.to(device)

@@ -8,24 +8,9 @@ from transformer import Transformer, SinusoidalPositionalEmbedding, SelfAttentio
 from data import ListsToTensor, BOS
 from search import Hypothesis, Beam, search_by_batch
 from utils import move_to_device
-
-class MonoEncoder(nn.Module):
-    def __init__(self, vocab, layers, embed_dim, ff_embed_dim, num_heads, dropout):
-        super(MonoEncoder, self).__init__()
-        self.vocab = vocab
-        self.src_embed = Embedding(vocab.size, embed_dim, vocab.padding_idx)
-        self.src_pos_embed = SinusoidalPositionalEmbedding(embed_dim)
-        self.embed_scale = math.sqrt(embed_dim)
-        self.transformer = Transformer(layers, embed_dim, ff_embed_dim, num_heads, dropout)
-        self.dropout = dropout
-
-
-    def forward(self, input_ids):
-        src_repr = self.embed_scale * self.src_embed(input_ids) + self.src_pos_embed(input_ids)
-        src_repr = F.dropout(src_repr, p=self.dropout, training=self.training)
-        src_mask = torch.eq(input_ids, self.vocab.padding_idx)
-        src_repr = self.transformer(src_repr, self_padding_mask=src_mask)
-        return src_repr, src_mask
+from retriever import ProjEncoder
+from module import MonoEncoder
+from mips import MIPS, augment_query
 
 class Generator(nn.Module):
     def __init__(self, vocabs,
@@ -113,7 +98,7 @@ class Generator(nn.Module):
         tgt_in_repr = self.embed_scale * self.tgt_embed(data['tgt_tokens_in']) + self.tgt_pos_embed(data['tgt_tokens_in'])
         tgt_in_repr = F.dropout(tgt_in_repr, p=self.dropout, training=self.training)
         tgt_in_mask = torch.eq(data['tgt_tokens_in'], self.vocabs['tgt'].padding_idx)
-        attn_mask = self.self_attn_mask(data['tgt_tokens_in'].size(0))
+        attn_mask = self.self_attn_mask(data['tgt_tokens_in'])
 
         tgt_out = self.decoder(tgt_in_repr,
                                   self_padding_mask=tgt_in_mask, self_attn_mask=attn_mask,
@@ -142,6 +127,168 @@ class MemGenerator(nn.Module):
         self.dropout = dropout
 
     def encode_step(self, inp):
+
+        src_repr, src_mask = self.encoder(inp['src_tokens'])
+        mem_repr, mem_mask = self.mem_encoder(inp['all_mem_tokens'])
+        # mem_repr -> seq_len x ( num_mem_sents_per_instance * bsz ) x dim
+        # mem_mask -> seq_len x ( num_mem_sents_per_instance * bsz )
+        seq_len, _, dim = mem_repr.size()
+        bsz = src_repr.size(1)
+        mem_repr = mem_repr.view(-1, bsz, dim)
+        mem_mask = mem_mask.view(-1, bsz)
+        copy_seq = inp['all_mem_tokens'].view(-1, bsz)
+
+        attn_bias = inp['all_mem_scores'].view(1, -1, bsz).expand(seq_len, -1, bsz).reshape(-1, bsz)
+        return src_repr, src_mask, mem_repr, mem_mask, copy_seq, attn_bias
+
+    def prepare_incremental_input(self, step_seq):
+        token = torch.from_numpy(ListsToTensor(step_seq, self.vocabs['tgt']))
+        return token
+
+    def decode_step(self, step_token, state_dict, mem_dict, offset, topk): 
+        src_repr = mem_dict['encoder_state']
+        src_padding_mask = mem_dict['encoder_state_mask']
+        mem_repr = mem_dict['mem_encoder_state']
+        mem_padding_mask = mem_dict['mem_encoder_state_mask']
+        copy_seq = mem_dict['copy_seq']
+        mem_bias = mem_dict['mem_bias']
+
+        _, bsz, _ = src_repr.size()
+
+        new_state_dict = {}
+
+        token_repr = self.embed_scale * self.tgt_embed(step_token) + self.tgt_pos_embed(step_token, offset)
+        for idx, layer in enumerate(self.decoder.layers):
+            name_i = 'decoder_state_at_layer_%d'%idx
+            if name_i in state_dict:
+                prev_token_repr = state_dict[name_i]
+                new_token_repr = torch.cat([prev_token_repr, token_repr], 0)
+            else:
+                new_token_repr = token_repr
+
+            new_state_dict[name_i] = new_token_repr
+            token_repr, _, _ = layer(token_repr, kv=new_token_repr, external_memories=src_repr, external_padding_mask=src_padding_mask)
+        name = 'decoder_state_at_last_layer'
+        if name in state_dict:
+            prev_token_state = state_dict[name]
+            new_token_state = torch.cat([prev_token_state, token_repr], 0)
+        else:
+            new_token_state = token_repr
+        new_state_dict[name] = new_token_state
+
+        LL = self.output(token_repr, mem_repr, mem_padding_mask, mem_bias, copy_seq, None, work=True)
+
+        def idx2token(idx, local_vocab):
+            if (local_vocab is not None) and (idx in local_vocab):
+                return local_vocab[idx]
+            return self.vocabs['tgt'].idx2token(idx)
+
+        topk_scores, topk_token = torch.topk(LL.squeeze(0), topk, 1) # bsz x k
+
+        results = []
+        for s, t in zip(topk_scores.tolist(), topk_token.tolist()):
+            res = []
+            for score, token in zip(s, t):
+                res.append((idx2token(token, None), score))
+            results.append(res)
+
+        return new_state_dict, results
+
+    @torch.no_grad()
+    def work(self, data, beam_size, max_time_step, min_time_step=1):
+        src_repr, src_mask, mem_repr, mem_mask, copy_seq, mem_bias = self.encode_step(data)
+        mem_dict = {'encoder_state':src_repr,
+                    'encoder_state_mask':src_mask,
+                    'mem_encoder_state':mem_repr,
+                    'mem_encoder_state_mask':mem_mask,
+                    'copy_seq':copy_seq,
+                    'mem_bias':mem_bias}
+        init_hyp = Hypothesis({}, [BOS], 0.)
+        bsz = src_repr.size(1)
+        beams = [ Beam(beam_size, min_time_step, max_time_step, [init_hyp]) for i in range(bsz)]
+        search_by_batch(self, beams, mem_dict)
+        return beams
+
+    def forward(self, data):
+        src_repr, src_mask, mem_repr, mem_mask, copy_seq, mem_bias = self.encode_step(data)
+        tgt_in_repr = self.embed_scale * self.tgt_embed(data['tgt_tokens_in']) + self.tgt_pos_embed(data['tgt_tokens_in'])
+        tgt_in_repr = F.dropout(tgt_in_repr, p=self.dropout, training=self.training)
+        tgt_in_mask = torch.eq(data['tgt_tokens_in'], self.vocabs['tgt'].padding_idx)
+        attn_mask = self.self_attn_mask(data['tgt_tokens_in'])
+
+        tgt_out = self.decoder(tgt_in_repr,
+                                  self_padding_mask=tgt_in_mask, self_attn_mask=attn_mask,
+                                  external_memories=src_repr, external_padding_mask=src_mask)
+        
+        return self.output(tgt_out, mem_repr, mem_mask, mem_bias, copy_seq, data)
+
+class RetrieverGenerator(nn.Module):
+    def __init__(self, vocabs,
+                embed_dim, ff_embed_dim, num_heads, dropout, mem_dropout,
+                enc_layers, dec_layers, mem_enc_layers, label_smoothing):
+        super(MemGenerator, self).__init__()
+        self.vocabs = vocabs
+
+        ####Retriever####
+        self.retriever = ProjEncoder.from_pretrained(vocabs, model_args, ckpt)
+        self.mips = MIPS.from_built(index_path, nprobe=nprobe)
+        ####Retriever####
+
+        self.encoder = MonoEncoder(vocabs['src'], enc_layers, embed_dim, ff_embed_dim, num_heads, dropout)
+
+        self.tgt_embed = Embedding(vocabs['tgt'].size, embed_dim, vocabs['tgt'].padding_idx)
+        self.tgt_pos_embed = SinusoidalPositionalEmbedding(embed_dim)
+        self.decoder = Transformer(dec_layers, embed_dim, ff_embed_dim, num_heads, dropout, with_external=True)
+        
+        self.mem_encoder = MonoEncoder(vocabs['tgt'], mem_enc_layers, embed_dim, ff_embed_dim, num_heads, mem_dropout)
+        
+        self.embed_scale = math.sqrt(embed_dim)
+        self.self_attn_mask = SelfAttentionMask()
+        self.output = CopyTokenDecoder(vocabs, self.tgt_embed, label_smoothing, embed_dim, ff_embed_dim, dropout)
+        self.dropout = dropout
+
+    ####Retriever####
+    def retrieve_step(self, inp):
+        #TODO
+        vecsq = self.retriever(inp['src_tokens'])
+        vecsq = augment_query(vecsq)
+        D, I = mips.search(vecsq, args.topk)
+        D = l2_to_ip(D, vecsq, max_norm) / (max_norm * max_norm)
+        for i, (Ii, Di) in enumerate(zip(I, D)):
+            item = {'query':textq[cur+i]}
+            item['retrieval'] = [{'response':textr[pred], 'score':float(s)} for pred, s in zip(Ii, Di)]
+            fo.write(json.dumps(item)+'\n')
+
+        num_mem_sents = len(data[0]['mem_sents'])
+        mem_sents = []
+        for x in data:
+            assert len(x['mem_sents']) == num_mem_sents
+            mem_sents.append(x['mem_sents'])
+        # put all memory tokens (across the same batch) in a single list:
+        # No.1 memory for sentence 1, ..., No.1 memory for sentence N, No.2 memory for sentence 1, ...
+        # then convert to tensors:
+        # all_mem_tokens -> seq_len x ( num_mem_sents_per_instance * bsz )
+        # all_mem_scores -> num_mem_sents_per_instance * bsz
+        all_mem_tokens = []
+        all_mem_scores = []
+        for t in zip(*mem_sents):
+            assert len(t) == len(data), (len(t), len(data))
+            all_mem_tokens.extend([tokens+[EOS] for tokens, _ in t])
+            all_mem_scores.extend([score for _, score in t])
+
+        ret['all_mem_tokens'] = ListsToTensor(all_mem_tokens, vocabs['tgt'])
+        # to avoid GPU OOM issue, truncate the mem to the max. length of 1.5 x src_tokens
+        max_mem_len = int(1.5 * src_token.shape[0])
+        ret['all_mem_tokens'] = ret['all_mem_tokens'][:max_mem_len,:]
+        ret['all_mem_scores'] = np.array(all_mem_scores, dtype=np.float32)
+        ret['num_mem_sents_per_instance'] = num_mem_sents
+        return all_mem_tokens, all_mem_scores
+    ####Retriever####
+
+    def encode_step(self, inp):
+        all_mem_tokens, all_mem_scores = self.retrieve_step(inp)
+        inp['all_mem_tokens'] = all_mem_tokens
+        inp['all_mem_scores'] = all_mem_scores
 
         src_repr, src_mask = self.encoder(inp['src_tokens'])
         mem_repr, mem_mask = self.mem_encoder(inp['all_mem_tokens'])

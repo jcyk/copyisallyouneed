@@ -106,7 +106,7 @@ def ArraysToTensor(xs):
 
 def batchify(data, vocabs):
 
-    src_tokens = [x['src_tokens']+[EOS] for x in data]
+    src_tokens = [ [BOS]+x['src_tokens']for x in data]
     tgt_tokens_in = [[BOS]+x['tgt_tokens'] for x in data]
     tgt_tokens_out = [x['tgt_tokens']+[EOS] for x in data]
 

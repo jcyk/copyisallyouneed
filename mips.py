@@ -51,9 +51,13 @@ class MIPS:
     def search(self, query, k):
         return self.index.search(query, k)
 
+    def reconstruct(self, idx):
+        print (idx)
+        return self.index.reconstruct(idx)
+
     def save(self, path):
         faiss.write_index(self.index, path)
-
+   
     @classmethod
     def from_built(cls, path, nprobe=None):
         index = faiss.read_index(path)
@@ -79,6 +83,7 @@ if __name__ == '__main__':
     l2_index.add(data)
 
     mips = MIPS(d, "IVF10_HNSW32,SQ8", efSearch=128, nprobe=64)
+    #mips = MIPS(d, "IVF10_HNSW32,Flat", efSearch=128, nprobe=64)
     mips.to_gpu()
     mips.train(data)
     mips.add(data[:500])
@@ -93,6 +98,11 @@ if __name__ == '__main__':
     query = augment_query(query)
     D1, I1 = l2_index.search(query, 1)
     _, I2 = mips.search(query, 1)
+    mips.index.make_direct_map()
+    for Ii in I2:
+        for i in Ii:
+            vec = mips.reconstruct(int(i))
+            print (data[i]- vec)
     _, I3 = another_mips.search(query, 1)
 
 
@@ -102,7 +112,7 @@ if __name__ == '__main__':
 
     print ('L2&IP agreement')
     print(R1_metric(I0, I1))
-    DD = l2_to_ip(D1, max_norm, query)
+    DD = l2_to_ip(D1, query, max_norm)
     print ((DD-D0 < 1e-5).all())
     print ('########')
     for Ix in [I2,I3]:

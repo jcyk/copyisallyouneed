@@ -58,8 +58,8 @@ def parse_config():
 
 def batchify(data, vocabs, worddrop):
 
-    src_tokens = [[EOS] + x['src_tokens'] for x in data]
-    tgt_tokens = [[EOS] + x['tgt_tokens'] for x in data]
+    src_tokens = [[BOS] + x['src_tokens'] for x in data]
+    tgt_tokens = [[BOS] + x['tgt_tokens'] for x in data]
 
     src_token = ListsToTensor(src_tokens, vocabs['src'], worddrop)
     tgt_token = ListsToTensor(tgt_tokens, vocabs['tgt'], worddrop)
@@ -130,7 +130,7 @@ def main(args, local_rank):
                     level=logging.INFO)
 
     vocabs = dict()
-    vocabs['src'] = Vocab(args.src_vocab, 0, [EOS])
+    vocabs['src'] = Vocab(args.src_vocab, 0, [BOS, EOS])
     vocabs['tgt'] = Vocab(args.tgt_vocab, 0, [BOS, EOS])
 
     if args.world_size == 1 or (dist.get_rank() == 0):

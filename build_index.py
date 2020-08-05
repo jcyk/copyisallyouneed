@@ -43,7 +43,7 @@ def parse_args():
 
 def batchify(data, vocab):
 
-    tokens = [[EOS] + x for x in data]
+    tokens = [[BOS] + x for x in data]
 
     token = ListsToTensor(tokens, vocab)
 

@@ -27,7 +27,7 @@ def parse_config():
 
     # dropout / label_smoothing
     parser.add_argument('--dropout', type=float, default=0.1)
-    parser.add_argument('--mem_dropout', type=float, default=0.6)
+    parser.add_argument('--mem_dropout', type=float, default=0.1)
     parser.add_argument('--label_smoothing', type=float, default=0.1)
 
     # training
@@ -61,7 +61,7 @@ def main(args, local_rank):
     logger = logging.getLogger(__name__)
 
     vocabs = dict()
-    vocabs['src'] = Vocab(args.src_vocab, 0, [EOS])
+    vocabs['src'] = Vocab(args.src_vocab, 0, [BOS, EOS])
     vocabs['tgt'] = Vocab(args.tgt_vocab, 0, [BOS, EOS])
 
     if args.world_size == 1 or (dist.get_rank() == 0):

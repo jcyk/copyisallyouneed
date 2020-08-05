@@ -3,7 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 
 from transformer import MultiheadAttention, FeedForwardLayer
-from utils import label_smoothed_nll_loss
+from module import label_smoothed_nll_loss
 
 class TokenDecoder(nn.Module):
     def __init__(self, vocabs, tgt_embed, label_smoothing):

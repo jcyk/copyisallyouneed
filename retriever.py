@@ -6,8 +6,8 @@ import math
 import os
 
 from transformer import Transformer, SinusoidalPositionalEmbedding, Embedding
-from utils import move_to_device, label_smoothed_nll_loss, layer_norm
-from generator import MonoEncoder
+from utils import move_to_device
+from module import label_smoothed_nll_loss, layer_norm, MonoEncoder
 
 class MatchingModel(nn.Module):
     def __init__(self, query_encoder, response_encoder):
