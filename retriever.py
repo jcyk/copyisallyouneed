@@ -62,7 +62,7 @@ class MatchingModel(nn.Module):
     def from_pretrained(cls, vocabs, input_dir):
         model_args = torch.load(os.path.join(input_dir, 'args'))
         query_encoder = ProjEncoder.from_pretrained(vocabs['src'], model_args, os.path.join(input_dir, 'query_encoder'))
-        response_encoder = ProjEncoder.from_pretrained(vocabs['src'], model_args, os.path.join(input_dir, 'response_encoder'))
+        response_encoder = ProjEncoder.from_pretrained(vocabs['tgt'], model_args, os.path.join(input_dir, 'response_encoder'))
         model = cls(query_encoder, response_encoder)
         return model
 

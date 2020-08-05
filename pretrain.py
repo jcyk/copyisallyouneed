@@ -32,6 +32,7 @@ def parse_config():
     parser.add_argument('--label_smoothing', type=float, default=0.1)
 
     # training
+    parser.add_argument('--resume_ckpt', type=str, default=None)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1)
     parser.add_argument('--total_train_steps', type=int, default=100000)
@@ -101,6 +102,27 @@ class DataLoader(object):
             cur += self.batch_size
             yield batchify(data, self.vocabs, self.worddrop)
 
+@torch.no_grad()
+def validate(model, dev_data, device):
+    model.eval()
+    q_list = []
+    r_list = []
+    for batch in dev_data:
+        batch = move_to_device(batch, device)
+        q = model.query_encoder(batch['src_tokens'])
+        r = model.response_encoder(batch['tgt_tokens'])
+        q_list.append(q)
+        r_list.append(r)
+    q = torch.cat(q_list, dim=0)
+    r = torch.cat(r_list, dim=0)
+
+    bsz = q.size(0)
+    scores = torch.mm(q, r.t()) # bsz x bsz
+    gold = torch.arange(bsz, device=scores.device)
+    _, pred = torch.max(scores, -1)
+    acc = torch.sum(torch.eq(gold, pred).float()) / bsz
+    return acc
+
 def main(args, local_rank):
 
     logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
@@ -122,12 +144,21 @@ def main(args, local_rank):
     torch.cuda.set_device(local_rank)
     device = torch.device('cuda', local_rank)
     
-    model = MatchingModel.from_params(vocabs, args.layers, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.output_dim)
+    if args.resume_ckpt:
+        model = MatchingModel.from_pretrained(vocabs, args.resume_ckpt)
+    else:
+        model = MatchingModel.from_params(vocabs, args.layers, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.output_dim)
 
     if args.world_size > 1:
         set_seed(19940117 + dist.get_rank())
 
     model = model.to(device)
+
+    if args.resume_ckpt:
+        dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False)
+        acc = validate(model, dev_data, device)
+        logger.info("initialize from %s, initial acc %.2f", args.resume_ckpt, acc)
+
     optimizer = Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98), eps=1e-9)
     lr_schedule = get_linear_schedule_with_warmup(optimizer, args.warmup_steps, args.total_train_steps)
     train_data = DataLoader(vocabs, args.train_data, args.per_gpu_train_batch_size, worddrop=args.worddrop, for_train=True)
@@ -163,19 +194,10 @@ def main(args, local_rank):
                     logger.info("epoch %d, step %d, loss %.3f, acc %.3f", epoch, global_step, tr_stat['loss']/tr_stat['nsamples'], tr_stat['acc']/tr_stat['nsamples'])
                     tr_stat = Statistics()
                 if global_step > args.warmup_steps and global_step % args.eval_every == -1 % args.eval_every:
-                    dev_stat = Statistics()
-                    model.eval()
-                    dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False) 
-                    for batch in dev_data:
-                        batch = move_to_device(batch, device)
-                        loss, acc, bsz = model(batch['src_tokens'], batch['tgt_tokens'])
-                        dev_stat.update({'loss':loss.item() * bsz,
-                            'nsamples': bsz,
-                            'acc':acc * bsz})
-                        dev_stat.step()
- 
-                    logger.info("epoch %d, step %d, dev loss %.2f, dev acc %.2f", epoch, global_step, dev_stat['loss']/dev_stat['nsamples'], dev_stat['acc']/dev_stat['nsamples'])
-                    save_path = '%s/epoch%d_batch%d_acc%.2f'%(args.ckpt, epoch, global_step, dev_stat['acc']/dev_stat['nsamples'])
+                    dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False)
+                    acc = validate(model, dev_data, device)
+                    logger.info("epoch %d, step %d, dev, dev acc %.2f", epoch, global_step, acc)
+                    save_path = '%s/epoch%d_batch%d_acc%.2f'%(args.ckpt, epoch, global_step, acc)
                     model.save(args, save_path)
                     model.train()
             if global_step > args.total_train_steps:

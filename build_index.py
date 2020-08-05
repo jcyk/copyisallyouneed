@@ -129,7 +129,7 @@ def main(args):
         mips.to_cpu()
         if args.add_to_index:
             mips.add_with_ids(used_data, used_ids)
-            data = data[max_training_instances:]
+            data = data[args.max_training_instances:]
         mips.save(args.index_path)
         torch.save(max_norm, os.path.join(os.path.dirname(args.index_path), 'max_norm.pt'))
     else:
