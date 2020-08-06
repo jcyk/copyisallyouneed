@@ -1,9 +1,9 @@
 dataset=/apdcephfs/private_jcykcai/esen
-main_folder=${dataset}/ckpt.pretrain.33
-ckpt_folder=${main_folder}/epoch16_batch83999_acc0.97
+main_folder=${dataset}/ckpt.pretrain.6layers
+ckpt_folder=${main_folder}/epoch19_batch99999_acc0.98
 python3 /apdcephfs/private_jcykcai/copyisallyouneed/search_index.py \
         --input_file ${dataset}/dev.src.txt \
-        --output_file ${dataset}/dev.src.txt.mem.97 \
+        --output_file ${dataset}/dev.src.txt.mem.6 \
         --ckpt_path ${ckpt_folder}/query_encoder \
         --args_path ${ckpt_folder}/args \
         --vocab_path ${dataset}/src.vocab \

@@ -10,6 +10,8 @@ from utils import move_to_device, set_seed, average_gradients, Statistics
 from generator import Generator, MemGenerator
 from work import validate
 
+logger = logging.getLogger(__name__)
+
 def parse_config():
     parser = argparse.ArgumentParser()
     # vocabs
@@ -25,6 +27,9 @@ def parse_config():
     parser.add_argument('--dec_layers', type=int, default=6)
     parser.add_argument('--mem_enc_layers', type=int, default=4)
 
+    # pretraining
+    parser.add_argument('--shared_encoder', type=str, default=None)
+ 
     # dropout / label_smoothing
     parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--mem_dropout', type=float, default=0.1)
@@ -53,12 +58,23 @@ def parse_config():
 
     return parser.parse_args()
 
+def partially_load(model, ckpt):
+    pretrained_dict = torch.load(args.shared_encoder)
+    model_dict = model.state_dict()
+    model_dict_keys = set(model_dict.keys())
+    pretrained_dict_keys = set(pretrained_dict.keys())
+    logging.info("Not Initialized:")
+    logging.info(model_dict_keys - pretrained_dict_keys)
+    logging.info("Not Used:")
+    logging.info(pretrained_dict_keys - model_dict_keys)   
+    model_dict.update(pretrained_dict)
+    model.load_state_dict(model_dict)
+
 def main(args, local_rank):
 
     logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
                     level=logging.INFO)
-    logger = logging.getLogger(__name__)
 
     vocabs = dict()
     vocabs['src'] = Vocab(args.src_vocab, 0, [BOS, EOS])
@@ -83,6 +99,9 @@ def main(args, local_rank):
         model = MemGenerator(vocabs,
                 args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.mem_dropout,
                 args.enc_layers, args.dec_layers, args.mem_enc_layers, args.label_smoothing)
+    
+    if args.shared_encoder:
+        partially_load(model.encoder, args.shared_encoder)
 
     if args.world_size > 1:
         set_seed(19940117 + dist.get_rank())
