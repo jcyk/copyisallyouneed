@@ -59,14 +59,10 @@ def parse_config():
     return parser.parse_args()
 
 def partially_load(model, ckpt):
-    pretrained_dict = torch.load(args.shared_encoder)
+    pretrained_dict = torch.load(ckpt)
     model_dict = model.state_dict()
-    model_dict_keys = set(model_dict.keys())
-    pretrained_dict_keys = set(pretrained_dict.keys())
-    logging.info("Not Initialized:")
-    logging.info(model_dict_keys - pretrained_dict_keys)
-    logging.info("Not Used:")
-    logging.info(pretrained_dict_keys - model_dict_keys)   
+    #model_dict_keys = set(model_dict.keys())
+    #pretrained_dict_keys = set(pretrained_dict.keys())
     model_dict.update(pretrained_dict)
     model.load_state_dict(model_dict)
 

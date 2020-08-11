@@ -5,4 +5,4 @@ python3 /apdcephfs/private_jcykcai/copyisallyouneed/pick_shared_encoder.py \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
         --input_path ${ckpt_folder} \
-        --output_path ${main_folder}/shared_encoder
+        --output_path ${ckpt_folder}/shared_encoder
