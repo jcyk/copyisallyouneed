@@ -52,7 +52,6 @@ class MIPS:
         return self.index.search(query, k)
 
     def reconstruct(self, idx):
-        print (idx)
         return self.index.reconstruct(idx)
 
     def save(self, path):

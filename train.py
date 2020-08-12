@@ -1,5 +1,5 @@
 import torch
-import argparse, os, logging
+import argparse, os, logging, time
 import random
 import torch.multiprocessing as mp
 import torch.distributed as dist
@@ -7,8 +7,9 @@ import torch.distributed as dist
 from data import Vocab, DataLoader, BOS, EOS
 from optim import Adam, get_inverse_sqrt_schedule_with_warmup
 from utils import move_to_device, set_seed, average_gradients, Statistics
-from generator import Generator, MemGenerator
+from generator import Generator, MemGenerator, RetrieverGenerator
 from work import validate
+from retriever import Retriever
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ def parse_config():
     parser.add_argument('--tgt_vocab', type=str, default='en.vocab')
 
     # architecture
-    parser.add_argument('--arch', type=str, choices=['vanilla', 'mem'], default='vanilla')
+    parser.add_argument('--arch', type=str, choices=['vanilla', 'mem', 'rg'], default='vanilla')
     parser.add_argument('--embed_dim', type=int, default=512)
     parser.add_argument('--ff_embed_dim', type=int, default=2048)
     parser.add_argument('--num_heads', type=int, default=8)
@@ -27,8 +28,11 @@ def parse_config():
     parser.add_argument('--dec_layers', type=int, default=6)
     parser.add_argument('--mem_enc_layers', type=int, default=4)
 
-    # pretraining
+    # retriever / pretraining
     parser.add_argument('--shared_encoder', type=str, default=None)
+    parser.add_argument('--retriever', type=str, default=None)
+    parser.add_argument('--nprobe', type=int, default=64)
+    parser.add_argument('--topk', type=int, default=5)
  
     # dropout / label_smoothing
     parser.add_argument('--dropout', type=float, default=0.1)
@@ -95,8 +99,17 @@ def main(args, local_rank):
         model = MemGenerator(vocabs,
                 args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.mem_dropout,
                 args.enc_layers, args.dec_layers, args.mem_enc_layers, args.label_smoothing)
+    elif args.arch == 'rg':
+        logger.info("start building model")
+        logger.info("building retriever")
+        retriever = Retriever(vocabs, args.retriever, args.nprobe, args.topk, local_rank)
+        logger.info("building retriever + generator")
+        model = RetrieverGenerator(vocabs, retriever,
+                args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.mem_dropout,
+                args.enc_layers, args.dec_layers, args.mem_enc_layers, args.label_smoothing)
     
     if args.shared_encoder:
+        logger.info("partially loading shared encoder from ckpt %s", args.shared_encoder)
         partially_load(model.encoder, args.shared_encoder)
 
     if args.world_size > 1:
@@ -113,6 +126,7 @@ def main(args, local_rank):
     model.train()
     while global_step <= args.total_train_steps:
         for batch in train_data:
+            step_start = time.time()
             batch = move_to_device(batch, device)
             loss, acc = model(batch)
             tr_stat.update({'loss':loss.item() * batch['tgt_num_tokens'],
@@ -120,7 +134,8 @@ def main(args, local_rank):
                             'acc':acc})
             tr_stat.step()
             loss.backward()
-
+            step_cost = time.time() - step_start
+            print ('step_cost', step_cost)
             step += 1
             if not (step % args.gradient_accumulation_steps == -1 % args.gradient_accumulation_steps):
                 continue
@@ -133,7 +148,7 @@ def main(args, local_rank):
             lr_schedule.step()
             optimizer.zero_grad()
             global_step += 1
-
+         
             if args.world_size == 1 or (dist.get_rank() == 0):
                 if global_step % args.print_every == -1 % args.print_every:
                     logger.info("epoch %d, step %d, loss %.3f, acc %.3f", epoch, global_step, tr_stat['loss']/tr_stat['tokens'], tr_stat['acc']/tr_stat['tokens'])

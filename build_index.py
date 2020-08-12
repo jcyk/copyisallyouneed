@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 def parse_args():
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('--only_dump_feat', action='store_true')
     parser.add_argument('--input_file', type=str)
     parser.add_argument('--args_path', type=str)
     parser.add_argument('--ckpt_path', type=str)
@@ -38,7 +39,7 @@ def parse_args():
         help='if max_norm is not given, max_norm = max_norm_in_training * max_norm_cf')
     parser.add_argument('--norm_th', type=float, default=999,
         help='will discard a vector if its norm is bigger than this value')
-    parser.add_argument('--dump_every', type=int, default=100000)
+    parser.add_argument('--add_every', type=int, default=1000000)
     return parser.parse_args()
 
 def batchify(data, vocab):
@@ -114,6 +115,21 @@ def main(args):
             line_id += 1
             data.append([r, line_id])
 
+    if args.only_dump_feat:
+        max_norm = torch.load(os.path.join(os.path.dirname(args.index_path), 'max_norm.pt'))
+        cur = 0
+        while cur < len(data):
+            used_data = [x[0] for x in data[cur:cur+args.add_every]]
+            used_ids = np.array([x[1] for x in data[cur:cur+args.add_every]])
+            cur += args.add_every
+            used_data, used_ids, _ = get_features(args, vocab, model, used_data, used_ids, max_norm)
+            used_data = used_data[:,1:]
+            assert used_ids == np.sort(used_ids)
+            logger.info('Dumping %d instances', used_data.shape[0])
+            torch.save(torch.from_numpy(used_data), os.path.join(os.path.dirname(args.index_path), 'feat.pt')) 
+        exit(0)
+
+
     logger.info('Collected %d instances', len(data))
     max_norm = args.max_norm
     if args.train_index:
@@ -139,9 +155,9 @@ def main(args):
     if args.add_to_index:
         cur = 0
         while cur < len(data):
-            used_data = [x[0] for x in data[cur:cur+args.dump_every]]
-            used_ids = np.array([x[1] for x in data[cur:cur+args.dump_every]])
-            cur += args.dump_every
+            used_data = [x[0] for x in data[cur:cur+args.add_every]]
+            used_ids = np.array([x[1] for x in data[cur:cur+args.add_every]])
+            cur += args.add_every
             logger.info('Computing feature for indexing')
             used_data, used_ids, _ = get_features(args, vocab, model, used_data, used_ids, max_norm)
             logger.info('Adding %d instances to index', used_data.shape[0])

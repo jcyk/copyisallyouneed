@@ -5,12 +5,10 @@ import math
 
 from decoding import TokenDecoder, CopyTokenDecoder
 from transformer import Transformer, SinusoidalPositionalEmbedding, SelfAttentionMask, Embedding
-from data import ListsToTensor, BOS
+from data import ListsToTensor, BOS, EOS, _back_to_txt_for_check
 from search import Hypothesis, Beam, search_by_batch
 from utils import move_to_device
-from retriever import ProjEncoder
 from module import MonoEncoder
-from mips import MIPS, augment_query
 
 class Generator(nn.Module):
     def __init__(self, vocabs,
@@ -223,18 +221,16 @@ class MemGenerator(nn.Module):
         return self.output(tgt_out, mem_repr, mem_mask, mem_bias, copy_seq, data)
 
 class RetrieverGenerator(nn.Module):
-    def __init__(self, vocabs,
+    def __init__(self, vocabs, retriever,
                 embed_dim, ff_embed_dim, num_heads, dropout, mem_dropout,
                 enc_layers, dec_layers, mem_enc_layers, label_smoothing):
-        super(MemGenerator, self).__init__()
+        super(RetrieverGenerator, self).__init__()
         self.vocabs = vocabs
 
         ####Retriever####
-        self.retriever = ProjEncoder.from_pretrained(vocabs, model_args, ckpt)
-        self.mips = MIPS.from_built(index_path, nprobe=nprobe)
+        self.retriever = retriever
+        self.encoder = self.retriever.model.encoder
         ####Retriever####
-
-        self.encoder = MonoEncoder(vocabs['src'], enc_layers, embed_dim, ff_embed_dim, num_heads, dropout)
 
         self.tgt_embed = Embedding(vocabs['tgt'].size, embed_dim, vocabs['tgt'].padding_idx)
         self.tgt_pos_embed = SinusoidalPositionalEmbedding(embed_dim)
@@ -248,49 +244,19 @@ class RetrieverGenerator(nn.Module):
         self.dropout = dropout
 
     ####Retriever####
-    def retrieve_step(self, inp):
-        #TODO
-        vecsq = self.retriever(inp['src_tokens'])
-        vecsq = augment_query(vecsq)
-        D, I = mips.search(vecsq, args.topk)
-        D = l2_to_ip(D, vecsq, max_norm) / (max_norm * max_norm)
-        for i, (Ii, Di) in enumerate(zip(I, D)):
-            item = {'query':textq[cur+i]}
-            item['retrieval'] = [{'response':textr[pred], 'score':float(s)} for pred, s in zip(Ii, Di)]
-            fo.write(json.dumps(item)+'\n')
-
-        num_mem_sents = len(data[0]['mem_sents'])
-        mem_sents = []
-        for x in data:
-            assert len(x['mem_sents']) == num_mem_sents
-            mem_sents.append(x['mem_sents'])
-        # put all memory tokens (across the same batch) in a single list:
-        # No.1 memory for sentence 1, ..., No.1 memory for sentence N, No.2 memory for sentence 1, ...
-        # then convert to tensors:
-        # all_mem_tokens -> seq_len x ( num_mem_sents_per_instance * bsz )
-        # all_mem_scores -> num_mem_sents_per_instance * bsz
-        all_mem_tokens = []
-        all_mem_scores = []
-        for t in zip(*mem_sents):
-            assert len(t) == len(data), (len(t), len(data))
-            all_mem_tokens.extend([tokens+[EOS] for tokens, _ in t])
-            all_mem_scores.extend([score for _, score in t])
-
-        ret['all_mem_tokens'] = ListsToTensor(all_mem_tokens, vocabs['tgt'])
-        # to avoid GPU OOM issue, truncate the mem to the max. length of 1.5 x src_tokens
-        max_mem_len = int(1.5 * src_token.shape[0])
-        ret['all_mem_tokens'] = ret['all_mem_tokens'][:max_mem_len,:]
-        ret['all_mem_scores'] = np.array(all_mem_scores, dtype=np.float32)
-        ret['num_mem_sents_per_instance'] = num_mem_sents
-        return all_mem_tokens, all_mem_scores
+    def retrieve_step(self, inp, work):
+        #_back_to_txt_for_check(inp['tgt_tokens_in'], self.vocabs['tgt'])
+        ret = self.retriever.work(inp, work)
+        ret = move_to_device(ret, inp['src_tokens'].device)
+        return ret
     ####Retriever####
 
-    def encode_step(self, inp):
-        all_mem_tokens, all_mem_scores = self.retrieve_step(inp)
+    def encode_step(self, inp, work=False):
+        src_repr, src_mask, all_mem_tokens, all_mem_scores, num_mem_sents = self.retrieve_step(inp, work)
         inp['all_mem_tokens'] = all_mem_tokens
         inp['all_mem_scores'] = all_mem_scores
+        inp['num_mem_sents_per_instance'] = num_mem_sents
 
-        src_repr, src_mask = self.encoder(inp['src_tokens'])
         mem_repr, mem_mask = self.mem_encoder(inp['all_mem_tokens'])
         # mem_repr -> seq_len x ( num_mem_sents_per_instance * bsz ) x dim
         # mem_mask -> seq_len x ( num_mem_sents_per_instance * bsz )
@@ -358,7 +324,7 @@ class RetrieverGenerator(nn.Module):
 
     @torch.no_grad()
     def work(self, data, beam_size, max_time_step, min_time_step=1):
-        src_repr, src_mask, mem_repr, mem_mask, copy_seq, mem_bias = self.encode_step(data)
+        src_repr, src_mask, mem_repr, mem_mask, copy_seq, mem_bias = self.encode_step(data, work=True)
         mem_dict = {'encoder_state':src_repr,
                     'encoder_state_mask':src_mask,
                     'mem_encoder_state':mem_repr,

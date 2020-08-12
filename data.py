@@ -66,7 +66,8 @@ def _back_to_txt_for_check(tensor, vocab, local_idx2token=None):
             txt.append(tok)
         txt = ' '.join(txt)
         print (txt)
-    print ('-'*55)
+        print ('-'*55)
+    print ('='*55)
 
 def ListsToTensor(xs, vocab=None, worddrop=0., local_vocabs=None):
     pad = vocab.padding_idx if vocab else 0
@@ -150,7 +151,7 @@ def batchify(data, vocabs):
         for t in zip(*mem_sents):
             assert len(t) == len(data), (len(t), len(data))
             all_mem_tokens.extend([tokens+[EOS] for tokens, _ in t])
-            all_mem_scores.extend([score for _, score in t])
+            all_mem_scores.extend([scores for _, scores in t])
 
         ret['all_mem_tokens'] = ListsToTensor(all_mem_tokens, vocabs['tgt'])
         # to avoid GPU OOM issue, truncate the mem to the max. length of 1.5 x src_tokens
