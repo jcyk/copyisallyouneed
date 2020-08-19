@@ -135,7 +135,7 @@ def main(args, local_rank):
             tr_stat.step()
             loss.backward()
             step_cost = time.time() - step_start
-            print ('step_cost', step_cost)
+            #print ('step_cost', step_cost)
             step += 1
             if not (step % args.gradient_accumulation_steps == -1 % args.gradient_accumulation_steps):
                 continue

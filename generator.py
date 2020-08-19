@@ -246,16 +246,14 @@ class RetrieverGenerator(nn.Module):
     ####Retriever####
     def retrieve_step(self, inp, work):
         #_back_to_txt_for_check(inp['tgt_tokens_in'], self.vocabs['tgt'])
-        ret = self.retriever.work(inp, work)
-        ret = move_to_device(ret, inp['src_tokens'].device)
-        return ret
+        src, src_mask, mem_ret = self.retriever.work(inp, work)
+        return src, src_mask, mem_ret
     ####Retriever####
 
     def encode_step(self, inp, work=False):
-        src_repr, src_mask, all_mem_tokens, all_mem_scores, num_mem_sents = self.retrieve_step(inp, work)
-        inp['all_mem_tokens'] = all_mem_tokens
-        inp['all_mem_scores'] = all_mem_scores
-        inp['num_mem_sents_per_instance'] = num_mem_sents
+        src_repr, src_mask, mem_ret = self.retrieve_step(inp, work)
+        
+        inp.update(mem_ret)
 
         mem_repr, mem_mask = self.mem_encoder(inp['all_mem_tokens'])
         # mem_repr -> seq_len x ( num_mem_sents_per_instance * bsz ) x dim

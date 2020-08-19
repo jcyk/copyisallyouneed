@@ -1,12 +1,14 @@
 import torch
 import sacrebleu
-import json, re
+import json, re, logging
 import numpy as np
 
 from data import Vocab, DataLoader, BOS, EOS
 from generator import Generator, MemGenerator
 from utils import move_to_device
 import argparse, os
+
+logger = logging.getLogger(__name__)
 
 def parse_config():
     parser = argparse.ArgumentParser()
@@ -32,16 +34,21 @@ def generate_batch(device, model, batch, beam_size, alpha, max_time_step):
         token_batch.append(predicted_token)
     return token_batch, batch['indices']
 
-def validate(device, model, test_data, beam_size=8, alpha=0.6, max_time_step=100):
-    """For development Only"""
+def validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=100):
+    """For Development Only"""
 
     ref_stream = []
     sys_stream = []
+    sys_retr_stream = []
     for batch in test_data:
         res, _ = generate_batch(device, model, batch, beam_size, alpha, max_time_step)
         sys_stream.extend(res)
         ref_stream.extend(batch['tgt_raw_sents'])
+        sys_retr = batch.get('top1_retrieval_raw_sents', None)
+        if sys_retr:
+            sys_retr_stream.extend(sys_retr)
     assert len(sys_stream) == len(ref_stream)
+
     sys_stream = [ re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(o)) for o in sys_stream]
     ref_stream = [ re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(o)) for o in ref_stream]
     ref_streams = [ref_stream]
@@ -49,6 +56,13 @@ def validate(device, model, test_data, beam_size=8, alpha=0.6, max_time_step=100
     bleu = sacrebleu.corpus_bleu(sys_stream, ref_streams, 
                           force=True, lowercase=False,
                           tokenize='none').score
+    if sys_retr_stream:
+        sys_retr_stream = [ re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(o)) for o in sys_retr_stream]
+        assert len(sys_retr_stream) == len(ref_stream)
+        bleu_retr = sacrebleu.corpus_bleu(sys_retr_stream, ref_streams, 
+                          force=True, lowercase=False,
+                          tokenize='none').score
+        logger.info("Retrieval top1 bleu %.2f", bleu_retr)
     return bleu
 
 if __name__ == "__main__":

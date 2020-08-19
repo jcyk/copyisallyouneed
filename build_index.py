@@ -124,7 +124,7 @@ def main(args):
             cur += args.add_every
             used_data, used_ids, _ = get_features(args, vocab, model, used_data, used_ids, max_norm)
             used_data = used_data[:,1:]
-            assert used_ids == np.sort(used_ids)
+            assert (used_ids == np.sort(used_ids)).all()
             logger.info('Dumping %d instances', used_data.shape[0])
             torch.save(torch.from_numpy(used_data), os.path.join(os.path.dirname(args.index_path), 'feat.pt')) 
         exit(0)

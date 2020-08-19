@@ -25,8 +25,7 @@ class Retriever(nn.Module):
         self.vocabs = vocabs
 
     def work(self, inp, allow_hit):
-        src_tokens = inp['src_tokens']
-        tgt_raw_sents = inp['tgt_raw_sents']
+        src_tokens = inp['src_tokens'] 
         src_feat, src, src_mask = self.model(src_tokens, return_src=True)
         vecsq = src_feat.detach().cpu().numpy()
         retrieval_start = time.time()
@@ -35,16 +34,21 @@ class Retriever(nn.Module):
         D = l2_to_ip(D, vecsq, self.mips_max_norm) / (self.mips_max_norm * self.mips_max_norm)
         mem_sents = []
         for i, (Ii, Di) in enumerate(zip(I, D)):
-            mem_sents.append([(self.mem_pool[pred], self.mem_feat[pred], float(s)) for pred, s in zip(Ii, Di) if allow_hit or self.mem_pool[pred]!=tgt_raw_sents[i]])
-            mem_sents[-1] = mem_sents[-1][:self.topk]
-            assert len(mem_sents[-1]) == self.topk
+            tmplist = []
+            for pred, s in zip(Ii, Di):
+                mem = self.mem_pool[pred]
+                if allow_hit or mem!=inp['tgt_raw_sents'][i]:
+                    mem_feat = self.mem_feat[pred]
+                    score = float(s)
+                    #ip = torch.sum(src_feat[i] * mem_feat.to(src_feat.device))
+                    #norm_times_norm = torch.norm(src_feat[i]) * torch.norm(mem_feat)
+                    #print ('single score', ip/norm_times_norm, score)
+                    tmplist.append([mem, mem_feat, score])
+            tmplist = tmplist[:self.topk]
+            assert len(tmplist) == self.topk
+            mem_sents.append(tmplist)
         retrieval_cost = time.time() - retrieval_start
-        print ('retrieval_cost', retrieval_cost)
-        # for x, y in zip(mem_sents, inp['tgt_raw_sents']):
-        #     print ('tgt-->', ' '.join(y))
-        #     for i in range(self.topk):
-        #         print ('mem%d-->'%(i,), ' '.join(x[i][0]), x[i][1])
-        # print ('='*55)
+        #print ('retrieval_cost', retrieval_cost)
 
         # put all memory tokens (across the same batch) in a single list:
         # No.1 memory for sentence 1, ..., No.1 memory for sentence N, No.2 memory for sentence 1, ...
@@ -57,21 +61,26 @@ class Retriever(nn.Module):
         all_mem_feats = []
         for t in zip(*mem_sents):
             all_mem_tokens.extend([tokens+[EOS] for tokens, _, _ in t])
-            all_mem_scores.extend([scores for _, _, scores in t])
-            all_mem_feats.extend([feats for _, feats, _ in t])
-        # (bsz x dim), (num_mem_sents_per_instance x bsz x dim) -> num_mem_sents_per_instance x bsz
+            all_mem_scores.extend([score for _, _, score in t])
+            all_mem_feats.extend([feat for _, feat, _ in t])
         bsz, dim = src_feat.size()
         src_feat = src_feat.view(1, bsz, dim)
-        all_mem_feats = torch.stack(all_mem_feats, dim=-1).view(-1, bsz, dim)
-        all_mem_scores_ = torch.tensor(all_mem_scores, dtype=torch.float)
-        all_mem_scores = torch.sum(src_feat * all_mem_feats, dim=-1).view(-1)
-        print ('all_mem_scores_diff', all_mem_scores - all_mem_scores_)
+        all_mem_feats = torch.stack(all_mem_feats, dim=0).to(src_feat.device).view(-1, bsz, dim)
+
+        #all_mem_scores_ = torch.tensor(all_mem_scores, dtype=torch.float, device=src_feat.device)
+        all_mem_scores = torch.sum(src_feat * all_mem_feats, dim=-1).view(-1) / (self.mips_max_norm ** 2)
 
         all_mem_tokens = ListsToTensor(all_mem_tokens, self.vocabs['tgt'])
         # to avoid GPU OOM issue, truncate the mem to the max. length of 1.5 x src_tokens
         max_mem_len = int(1.5 * src_tokens.shape[0])
-        all_mem_tokens = all_mem_tokens[:max_mem_len,:]
-        return src, src_mask, all_mem_tokens, all_mem_scores, self.topk
+        all_mem_tokens = move_to_device(all_mem_tokens[:max_mem_len,:], inp['src_tokens'].device)
+
+        mem_ret = {}
+        mem_ret['top1_retrieval_raw_sents'] = [x[0] for x in mem_sents]
+        mem_ret['all_mem_tokens'] = all_mem_tokens
+        mem_ret['all_mem_scores'] = all_mem_scores
+        mem_ret['num_mem_sents_per_instance'] = self.topk
+        return src, src_mask, mem_ret
 
 class MatchingModel(nn.Module):
     def __init__(self, query_encoder, response_encoder):

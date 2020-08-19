@@ -7,4 +7,5 @@ python3 /apdcephfs/private_jcykcai/copyisallyouneed/build_index.py \
         --args_path ${ckpt_folder}/args \
         --vocab_path ${dataset}/tgt.vocab \
         --index_path ${ckpt_folder}/mips_index \
-        --batch_size 8192
+        --batch_size 8192 \
+        --only_dump_feat
