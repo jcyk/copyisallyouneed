@@ -100,7 +100,7 @@ if __name__ == "__main__":
             model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing)
     elif model_args.arch == 'rg':
         retriever = Retriever(vocabs, model_args.retriever, model_args.nprobe, model_args.topk, -1)
-        model = RetrieverGenerator(vocabs, retriever,
+        model = RetrieverGenerator(vocabs, retriever, model_args.share_encoder,
                 model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.mem_dropout,
                 model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing)
 

@@ -220,15 +220,19 @@ class MemGenerator(nn.Module):
         return self.output(tgt_out, mem_repr, mem_mask, mem_bias, copy_seq, data)
 
 class RetrieverGenerator(nn.Module):
-    def __init__(self, vocabs, retriever,
+    def __init__(self, vocabs, retriever, share_encoder,
                 embed_dim, ff_embed_dim, num_heads, dropout, mem_dropout,
                 enc_layers, dec_layers, mem_enc_layers, label_smoothing):
         super(RetrieverGenerator, self).__init__()
         self.vocabs = vocabs
 
         ####Retriever####
+        self.share_encoder = share_encoder
         self.retriever = retriever
-        self.encoder = self.retriever.model.encoder
+        if share_encoder:
+            self.encoder = self.retriever.model.encoder
+        else:
+            self.encoder = MonoEncoder(vocabs['src'], enc_layers, embed_dim, ff_embed_dim, num_heads, dropout)
         ####Retriever####
 
         self.tgt_embed = Embedding(vocabs['tgt'].size, embed_dim, vocabs['tgt'].padding_idx)
@@ -251,6 +255,8 @@ class RetrieverGenerator(nn.Module):
 
     def encode_step(self, inp, work=False):
         src_repr, src_mask, mem_ret = self.retrieve_step(inp, work)
+        if not self.share_encoder:
+            src_repr, src_mask = self.encoder(inp['src_tokens'])
         inp.update(mem_ret)
 
 

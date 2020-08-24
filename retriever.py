@@ -12,10 +12,13 @@ from mips import MIPS, augment_query, l2_to_ip
 from data import BOS, EOS, ListsToTensor, _back_to_txt_for_check
 
 class Retriever(nn.Module):
-    def __init__(self, vocabs, input_dir, nprobe, topk, gpuid):
+    def __init__(self, vocabs, input_dir, nprobe, topk, gpuid, load_response_encoder=False):
         super(Retriever, self).__init__()
         model_args = torch.load(os.path.join(input_dir, 'args'))
         self.model = ProjEncoder.from_pretrained(vocabs['src'], model_args, os.path.join(input_dir, 'query_encoder'))
+        if load_response_encoder:
+            self.another_model = ProjEncoder.from_pretrained(vocabs['tgt'], model_args, os.path.join(input_dir, 'response_encoder'))
+            
         self.mips = MIPS.from_built(os.path.join(input_dir, 'mips_index'), nprobe=nprobe)
         if gpuid >= 0:
             self.mips.to_gpu(gpuid=gpuid)

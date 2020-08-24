@@ -9,7 +9,7 @@ from optim import Adam, get_inverse_sqrt_schedule_with_warmup
 from utils import move_to_device, set_seed, average_gradients, Statistics
 from generator import Generator, MemGenerator, RetrieverGenerator
 from work import validate
-from retriever import Retriever
+from retriever import Retriever, MatchingModel
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +28,9 @@ def parse_config():
     parser.add_argument('--dec_layers', type=int, default=6)
     parser.add_argument('--mem_enc_layers', type=int, default=4)
 
-    # retriever / pretraining
-    parser.add_argument('--shared_encoder', type=str, default=None)
+    # retriever
+    parser.add_argument('--add_retrieval_loss', action='store_true')
+    parser.add_argument('--share_encoder', action='store_true')
     parser.add_argument('--retriever', type=str, default=None)
     parser.add_argument('--nprobe', type=int, default=64)
     parser.add_argument('--topk', type=int, default=5)
@@ -102,15 +103,13 @@ def main(args, local_rank):
     elif args.arch == 'rg':
         logger.info("start building model")
         logger.info("building retriever")
-        retriever = Retriever(vocabs, args.retriever, args.nprobe, args.topk, local_rank)
+        retriever = Retriever(vocabs, args.retriever, args.nprobe, args.topk, local_rank, load_response_encoder=args.add_retrieval_loss)
         logger.info("building retriever + generator")
-        model = RetrieverGenerator(vocabs, retriever,
+        model = RetrieverGenerator(vocabs, retriever, args.share_encoder,
                 args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.mem_dropout,
                 args.enc_layers, args.dec_layers, args.mem_enc_layers, args.label_smoothing)
-    
-    if args.shared_encoder:
-        logger.info("partially loading shared encoder from ckpt %s", args.shared_encoder)
-        partially_load(model.encoder, args.shared_encoder)
+        if args.add_retrieval_loss:
+            matchingmodel = MatchingModel(retriever.model, retriever.another_model)
 
     if args.world_size > 1:
         set_seed(19940117 + dist.get_rank())
@@ -135,6 +134,9 @@ def main(args, local_rank):
             step_start = time.time()
             batch = move_to_device(batch, device)
             loss, acc = model(batch)
+            if args.add_retrieval_loss:
+                loss_retrieval, acc_retrieval, bsz_retrieval = matchingmodel(batch['src_tokens'], batch['tgt_tokens_in'])
+                loss = loss + loss_retrieval
             tr_stat.update({'loss':loss.item() * batch['tgt_num_tokens'],
                             'tokens':batch['tgt_num_tokens'],
                             'acc':acc})
