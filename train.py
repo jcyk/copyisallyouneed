@@ -120,6 +120,12 @@ def main(args, local_rank):
     lr_schedule = get_inverse_sqrt_schedule_with_warmup(optimizer, args.warmup_steps, args.total_train_steps)
     train_data = DataLoader(vocabs, args.train_data, args.per_gpu_train_batch_size,
                             for_train=True, rank=local_rank, num_replica=args.world_size)
+    
+
+    model.eval()
+    dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False)
+    bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=10)
+    print (bleu)
     global_step, step, epoch = 0, 0, 0
     tr_stat = Statistics()
     logger.info("start training")

@@ -4,8 +4,9 @@ import json, re, logging
 import numpy as np
 
 from data import Vocab, DataLoader, BOS, EOS
-from generator import Generator, MemGenerator
+from generator import Generator, MemGenerator, RetrieverGenerator
 from utils import move_to_device
+from retriever import Retriever
 import argparse, os
 
 logger = logging.getLogger(__name__)
@@ -24,8 +25,7 @@ def parse_config():
 
     return parser.parse_args()
 
-def generate_batch(device, model, batch, beam_size, alpha, max_time_step):
-    batch = move_to_device(batch, device)
+def generate_batch(model, batch, beam_size, alpha, max_time_step):
     token_batch = []
     beams = model.work(batch, beam_size, max_time_step)
     for beam in beams:
@@ -41,12 +41,14 @@ def validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=100
     sys_stream = []
     sys_retr_stream = []
     for batch in test_data:
-        res, _ = generate_batch(device, model, batch, beam_size, alpha, max_time_step)
+        batch = move_to_device(batch, device)
+        res, _ = generate_batch(model, batch, beam_size, alpha, max_time_step)
         sys_stream.extend(res)
         ref_stream.extend(batch['tgt_raw_sents'])
         sys_retr = batch.get('top1_retrieval_raw_sents', None)
         if sys_retr:
             sys_retr_stream.extend(sys_retr)
+
     assert len(sys_stream) == len(ref_stream)
 
     sys_stream = [ re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(o)) for o in sys_stream]
@@ -57,8 +59,8 @@ def validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=100
                           force=True, lowercase=False,
                           tokenize='none').score
     if sys_retr_stream:
-        sys_retr_stream = [ re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(o)) for o in sys_retr_stream]
         assert len(sys_retr_stream) == len(ref_stream)
+        sys_retr_stream = [ re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(o)) for o in sys_retr_stream]
         bleu_retr = sacrebleu.corpus_bleu(sys_retr_stream, ref_streams, 
                           force=True, lowercase=False,
                           tokenize='none').score
@@ -88,14 +90,19 @@ if __name__ == "__main__":
     else:
         device = torch.device('cuda', args.device)
 
-    if model_args.arch == 'mem':
-        model = MemGenerator(vocabs,
-            model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.mem_dropout,
-            model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing)
-    else:
+    if model_args.arch == 'vanilla':
         model = Generator(vocabs,
             model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout,
             model_args.enc_layers, model_args.dec_layers, model_args.label_smoothing)
+    elif model_args.arch == 'mem':
+        model = MemGenerator(vocabs,
+            model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.mem_dropout,
+            model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing)
+    elif model_args.arch == 'rg':
+        retriever = Retriever(vocabs, model_args.retriever, model_args.nprobe, model_args.topk, -1)
+        model = RetrieverGenerator(vocabs, retriever,
+                model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.mem_dropout,
+                model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing)
 
     test_data = DataLoader(vocabs, args.test_data, args.test_batch_size, for_train=False)
 
@@ -109,7 +116,8 @@ if __name__ == "__main__":
         
         outs, indices = [], []
         for batch in test_data:
-            res, ind = generate_batch(device, model, batch, args.beam_size, args.alpha, args.max_time_step)
+            batch = move_to_device(batch, device)
+            res, ind = generate_batch(model, batch, args.beam_size, args.alpha, args.max_time_step)
             for out_tokens, index in zip(res, ind):
                 out_line = re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(out_tokens))
                 outs.append(out_line)

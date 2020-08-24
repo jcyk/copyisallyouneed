@@ -7,7 +7,6 @@ from decoding import TokenDecoder, CopyTokenDecoder
 from transformer import Transformer, SinusoidalPositionalEmbedding, SelfAttentionMask, Embedding
 from data import ListsToTensor, BOS, EOS, _back_to_txt_for_check
 from search import Hypothesis, Beam, search_by_batch
-from utils import move_to_device
 from module import MonoEncoder
 
 class Generator(nn.Module):
@@ -252,8 +251,8 @@ class RetrieverGenerator(nn.Module):
 
     def encode_step(self, inp, work=False):
         src_repr, src_mask, mem_ret = self.retrieve_step(inp, work)
-        
         inp.update(mem_ret)
+
 
         mem_repr, mem_mask = self.mem_encoder(inp['all_mem_tokens'])
         # mem_repr -> seq_len x ( num_mem_sents_per_instance * bsz ) x dim

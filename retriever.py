@@ -12,12 +12,13 @@ from mips import MIPS, augment_query, l2_to_ip
 from data import BOS, EOS, ListsToTensor, _back_to_txt_for_check
 
 class Retriever(nn.Module):
-    def __init__(self, vocabs, input_dir, nprobe, topk, local_rank):
+    def __init__(self, vocabs, input_dir, nprobe, topk, gpuid):
         super(Retriever, self).__init__()
         model_args = torch.load(os.path.join(input_dir, 'args'))
         self.model = ProjEncoder.from_pretrained(vocabs['src'], model_args, os.path.join(input_dir, 'query_encoder'))
         self.mips = MIPS.from_built(os.path.join(input_dir, 'mips_index'), nprobe=nprobe)
-        self.mips.to_gpu(gpuid=local_rank)
+        if gpuid >= 0:
+            self.mips.to_gpu(gpuid=gpuid)
         self.mips_max_norm = torch.load(os.path.join(input_dir, 'max_norm.pt'))
         self.mem_pool = [line.strip().split() for line in open(os.path.join(input_dir, 'candidates.txt')).readlines()]
         self.mem_feat = torch.load(os.path.join(input_dir, 'feat.pt'))
@@ -76,7 +77,7 @@ class Retriever(nn.Module):
         all_mem_tokens = move_to_device(all_mem_tokens[:max_mem_len,:], inp['src_tokens'].device)
 
         mem_ret = {}
-        mem_ret['top1_retrieval_raw_sents'] = [x[0] for x in mem_sents]
+        mem_ret['top1_retrieval_raw_sents'] = [x[0][0] for x in mem_sents]
         mem_ret['all_mem_tokens'] = all_mem_tokens
         mem_ret['all_mem_scores'] = all_mem_scores
         mem_ret['num_mem_sents_per_instance'] = self.topk
