@@ -103,13 +103,16 @@ def main(args, local_rank):
     elif args.arch == 'rg':
         logger.info("start building model")
         logger.info("building retriever")
-        retriever = Retriever(vocabs, args.retriever, args.nprobe, args.topk, local_rank, load_response_encoder=args.add_retrieval_loss)
+        if args.add_retrieval_loss:
+            retriever, another_model = Retriever.from_pretrained(vocabs, args.retriever, args.nprobe, args.topk, local_rank, load_response_encoder=True)
+            matchingmodel = MatchingModel(retriever.model, another_model)
+        else:
+            retriever = Retriever.from_pretrained(vocabs, args.retriever, args.nprobe, args.topk, local_rank)
+
         logger.info("building retriever + generator")
         model = RetrieverGenerator(vocabs, retriever, args.share_encoder,
                 args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.mem_dropout,
                 args.enc_layers, args.dec_layers, args.mem_enc_layers, args.label_smoothing)
-        if args.add_retrieval_loss:
-            matchingmodel = MatchingModel(retriever.model, retriever.another_model)
 
     if args.world_size > 1:
         set_seed(19940117 + dist.get_rank())

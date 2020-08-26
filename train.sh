@@ -9,4 +9,5 @@ python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${data
         --gpus 2 \
         --arch rg \
         --dev_batch_size 2048 \
-        --per_gpu_train_batch_size 4096
+        --per_gpu_train_batch_size 4096 \
+        --add_retrieval_loss

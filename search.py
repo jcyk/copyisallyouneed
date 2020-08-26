@@ -164,7 +164,9 @@ def search_by_batch(model, beams, mem_dict):
         cur_mem_dict = dict()
         indices = torch.tensor(indices).cuda()
         for k, v in mem_dict.items():
-            if isinstance(v, list): 
+            if v is None:
+                cur_mem_dict[k] = None
+            elif isinstance(v, list): 
                 cur_mem_dict[k] = [v[i] for i in indices]
             else:
                 cur_mem_dict[k] = v.index_select(1, indices)

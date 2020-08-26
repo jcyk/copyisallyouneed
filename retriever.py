@@ -12,21 +12,31 @@ from mips import MIPS, augment_query, l2_to_ip
 from data import BOS, EOS, ListsToTensor, _back_to_txt_for_check
 
 class Retriever(nn.Module):
-    def __init__(self, vocabs, input_dir, nprobe, topk, gpuid, load_response_encoder=False):
+    def __init__(self, vocabs, model, mips, mips_max_norm, mem_pool, mem_feat, topk, gpuid):
         super(Retriever, self).__init__()
-        model_args = torch.load(os.path.join(input_dir, 'args'))
-        self.model = ProjEncoder.from_pretrained(vocabs['src'], model_args, os.path.join(input_dir, 'query_encoder'))
-        if load_response_encoder:
-            self.another_model = ProjEncoder.from_pretrained(vocabs['tgt'], model_args, os.path.join(input_dir, 'response_encoder'))
-            
-        self.mips = MIPS.from_built(os.path.join(input_dir, 'mips_index'), nprobe=nprobe)
+        self.model = model
+        self.mips = mips
         if gpuid >= 0:
             self.mips.to_gpu(gpuid=gpuid)
-        self.mips_max_norm = torch.load(os.path.join(input_dir, 'max_norm.pt'))
-        self.mem_pool = [line.strip().split() for line in open(os.path.join(input_dir, 'candidates.txt')).readlines()]
-        self.mem_feat = torch.load(os.path.join(input_dir, 'feat.pt'))
+        self.mips_max_norm = mips_max_norm
+        self.mem_pool = mem_pool
+        self.mem_feat = mem_feat
         self.topk = topk
         self.vocabs = vocabs
+
+    @classmethod
+    def from_pretrained(cls, vocabs, input_dir, nprobe, topk, gpuid, load_response_encoder=False):
+        model_args = torch.load(os.path.join(input_dir, 'args'))
+        model = ProjEncoder.from_pretrained(vocabs['src'], model_args, os.path.join(input_dir, 'query_encoder'))
+        mips = MIPS.from_built(os.path.join(input_dir, 'mips_index'), nprobe=nprobe)
+        mips_max_norm = torch.load(os.path.join(input_dir, 'max_norm.pt'))
+        mem_pool = [line.strip().split() for line in open(os.path.join(input_dir, 'candidates.txt')).readlines()]
+        mem_feat = torch.load(os.path.join(input_dir, 'feat.pt'))
+        retriever = cls(vocabs, model, mips, mips_max_norm, mem_pool, mem_feat, topk, gpuid)
+        if load_response_encoder:
+            another_model = ProjEncoder.from_pretrained(vocabs['tgt'], model_args, os.path.join(input_dir, 'response_encoder'))
+            return retriever, another_model
+        return retriever
 
     def work(self, inp, allow_hit):
         src_tokens = inp['src_tokens'] 
