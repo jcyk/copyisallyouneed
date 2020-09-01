@@ -340,8 +340,10 @@ class RetrieverGenerator(nn.Module):
         search_by_batch(self, beams, mem_dict)
         return beams
 
-    def forward(self, data):
+    def forward(self, data, update_mem_bias=True):
         src_repr, src_mask, mem_repr, mem_mask, copy_seq, mem_bias = self.encode_step(data)
+        if not update_mem_bias:
+            mem_bias = mem_bias.detach()
         tgt_in_repr = self.embed_scale * self.tgt_embed(data['tgt_tokens_in']) + self.tgt_pos_embed(data['tgt_tokens_in'])
         tgt_in_repr = F.dropout(tgt_in_repr, p=self.dropout, training=self.training)
         tgt_in_mask = torch.eq(data['tgt_tokens_in'], self.vocabs['tgt'].padding_idx)

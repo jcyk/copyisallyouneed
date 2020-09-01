@@ -10,7 +10,7 @@ from utils import move_to_device, set_seed, average_gradients, Statistics
 from generator import Generator, MemGenerator, RetrieverGenerator
 from work import validate
 from retriever import Retriever, MatchingModel
-
+from pretrain import DataLoader as RetrieverDataLoader
 logger = logging.getLogger(__name__)
 
 def parse_config():
@@ -46,6 +46,8 @@ def parse_config():
     parser.add_argument('--warmup_steps', type=int, default=4000)
     parser.add_argument('--per_gpu_train_batch_size', type=int, default=4096)
     parser.add_argument('--dev_batch_size', type=int, default=4096)
+    parser.add_argument('--in_batch_negatives', type=int, default=128)
+    parser.add_argument('--worddrop', type=float, default=0.33)
 
     # IO
     parser.add_argument('--train_data', type=str, default='dev.txt')
@@ -106,6 +108,7 @@ def main(args, local_rank):
         if args.add_retrieval_loss:
             retriever, another_model = Retriever.from_pretrained(vocabs, args.retriever, args.nprobe, args.topk, local_rank, load_response_encoder=True)
             matchingmodel = MatchingModel(retriever.model, another_model)
+            matchingmodel = matchingmodel.to(device)
         else:
             retriever = Retriever.from_pretrained(vocabs, args.retriever, args.nprobe, args.topk, local_rank)
 
@@ -122,12 +125,13 @@ def main(args, local_rank):
     lr_schedule = get_inverse_sqrt_schedule_with_warmup(optimizer, args.warmup_steps, args.total_train_steps)
     train_data = DataLoader(vocabs, args.train_data, args.per_gpu_train_batch_size,
                             for_train=True, rank=local_rank, num_replica=args.world_size)
-    
-
+    if args.add_retrieval_loss:
+        retr_train_data = RetrieverDataLoader(vocabs, args.train_data, args.in_batch_negatives, worddrop=args.worddrop, for_train=True)
+        it_retr_train_data = iter(retr_train_data)
     model.eval()
-    dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False)
-    bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=10)
-    print (bleu)
+    #dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False)
+    #bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=10)
+    #print (bleu)
     global_step, step, epoch = 0, 0, 0
     tr_stat = Statistics()
     logger.info("start training")
@@ -136,15 +140,24 @@ def main(args, local_rank):
         for batch in train_data:
             step_start = time.time()
             batch = move_to_device(batch, device)
-            loss, acc = model(batch)
-            if args.add_retrieval_loss:
-                loss_retrieval, acc_retrieval, bsz_retrieval = matchingmodel(batch['src_tokens'], batch['tgt_tokens_in'])
-                loss = loss + loss_retrieval
+            loss, acc = model(batch, update_mem_bias=(global_step > args.warmup_steps))
+
             tr_stat.update({'loss':loss.item() * batch['tgt_num_tokens'],
                             'tokens':batch['tgt_num_tokens'],
                             'acc':acc})
             tr_stat.step()
             loss.backward()
+            if args.add_retrieval_loss:
+                try:
+                    batch = next(it_retr_train_data)
+                except StopIteration:
+                    it_retr_train_data = iter(retr_train_data)
+                    batch = next(it_retr_train_data)
+                loss_retrieval, acc_retrieval, bsz_retrieval = matchingmodel(batch['src_tokens'], batch['tgt_tokens'])
+                tr_stat.update({'loss_retrieval':loss_retrieval.item() * bsz_retrieval,
+                                'acc_retrieval':acc_retrieval * bsz_retrieval,
+                                'bsz_retrieval':bsz_retrieval})
+                loss_retrieval.backward()
             step_cost = time.time() - step_start
             #print ('step_cost', step_cost)
             step += 1
@@ -163,11 +176,14 @@ def main(args, local_rank):
             if args.world_size == 1 or (dist.get_rank() == 0):
                 if global_step % args.print_every == -1 % args.print_every:
                     logger.info("epoch %d, step %d, loss %.3f, acc %.3f", epoch, global_step, tr_stat['loss']/tr_stat['tokens'], tr_stat['acc']/tr_stat['tokens'])
+                    if args.add_retrieval_loss:
+                        logger.info("retrieval loss %.3f, acc %.3f", tr_stat['loss_retrieval']/tr_stat['bsz_retrieval'], tr_stat['acc_retrieval']/tr_stat['bsz_retrieval'])
                     tr_stat = Statistics()
-                if global_step > args.warmup_steps and global_step % args.eval_every == -1 % args.eval_every:
+                if global_step % args.eval_every == -1 % args.eval_every:
                     model.eval()
                     dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False) 
-                    bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=100)
+                    max_time_step = 100 if global_step > args.warmup_steps else 5
+                    bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=max_time_step)
                     logger.info("epoch %d, step %d, dev bleu %.2f", epoch, global_step, bleu)
                     torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_devbleu%.2f'%(args.ckpt, epoch, global_step, bleu))
                     model.train()

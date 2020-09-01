@@ -61,10 +61,15 @@ def validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=100
     if sys_retr_stream:
         assert len(sys_retr_stream) == len(ref_stream)
         sys_retr_stream = [ re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(o)) for o in sys_retr_stream]
+        lratio = []
+        for aa, bb in zip(sys_retr_stream, ref_stream):
+            laa = len(aa.split())
+            lbb = len(bb.split())
+            lratio.append(max(laa/lbb, lbb/laa))
         bleu_retr = sacrebleu.corpus_bleu(sys_retr_stream, ref_streams, 
                           force=True, lowercase=False,
                           tokenize='none').score
-        logger.info("Retrieval top1 bleu %.2f", bleu_retr)
+        logger.info("Retrieval top1 bleu %.2f length ratio %.2f", bleu_retr, sum(lratio)/len(lratio))
     return bleu
 
 if __name__ == "__main__":
