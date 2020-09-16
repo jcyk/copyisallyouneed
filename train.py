@@ -48,8 +48,10 @@ def parse_config():
     parser.add_argument('--dev_batch_size', type=int, default=4096)
     parser.add_argument('--in_batch_negatives', type=int, default=128)
     parser.add_argument('--worddrop', type=float, default=0.33)
-
+    parser.add_argument('--update_retriever_after', default=5000)
+    
     # IO
+    parser.add_argument('--resume_ckpt', type=str, default=None)
     parser.add_argument('--train_data', type=str, default='dev.txt')
     parser.add_argument('--dev_data', type=str, default='dev.txt')
     parser.add_argument('--ckpt', type=str, default='ckpt')
@@ -117,6 +119,12 @@ def main(args, local_rank):
                 args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.mem_dropout,
                 args.enc_layers, args.dec_layers, args.mem_enc_layers, args.label_smoothing)
 
+    if args.resume_ckpt:
+        global_step = 4800
+        model.load_state_dict(torch.load(args.resume_ckpt)['model'])
+    else:
+        global_step = 0
+
     if args.world_size > 1:
         set_seed(19940117 + dist.get_rank())
 
@@ -129,30 +137,36 @@ def main(args, local_rank):
         retr_train_data = RetrieverDataLoader(vocabs, args.train_data, args.in_batch_negatives, worddrop=args.worddrop, for_train=True)
         it_retr_train_data = iter(retr_train_data)
     model.eval()
-    #dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False)
-    #bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=10)
-    #print (bleu)
-    global_step, step, epoch = 0, 0, 0
+    dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False)
+    bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=10)
+
+    step, epoch = 0, 0
     tr_stat = Statistics()
     logger.info("start training")
     model.train()
+
+    for x in matchingmodel.response_encoder.parameters():
+        x.requires_grad = False
+
     while global_step <= args.total_train_steps:
         for batch in train_data:
             step_start = time.time()
-            batch = move_to_device(batch, device)
-            loss, acc = model(batch, update_mem_bias=(global_step > args.warmup_steps))
-
-            tr_stat.update({'loss':loss.item() * batch['tgt_num_tokens'],
-                            'tokens':batch['tgt_num_tokens'],
-                            'acc':acc})
+            #batch = move_to_device(batch, device)
+            #loss, acc = model(batch, update_mem_bias=(global_step > args.update_retriever_after))
+            tr_stat.update({'loss':0., 'tokens':1, 'acc':0.})
+            #tr_stat.update({'loss':loss.item() * batch['tgt_num_tokens'],
+            #                'tokens':batch['tgt_num_tokens'],
+            #                'acc':acc})
             tr_stat.step()
-            loss.backward()
+            #loss = loss * 0. 
+            #loss.backward()
             if args.add_retrieval_loss:
                 try:
                     batch = next(it_retr_train_data)
                 except StopIteration:
                     it_retr_train_data = iter(retr_train_data)
                     batch = next(it_retr_train_data)
+                batch = move_to_device(batch, device)
                 loss_retrieval, acc_retrieval, bsz_retrieval = matchingmodel(batch['src_tokens'], batch['tgt_tokens'])
                 tr_stat.update({'loss_retrieval':loss_retrieval.item() * bsz_retrieval,
                                 'acc_retrieval':acc_retrieval * bsz_retrieval,

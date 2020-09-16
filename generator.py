@@ -244,6 +244,7 @@ class RetrieverGenerator(nn.Module):
         self.embed_scale = math.sqrt(embed_dim)
         self.self_attn_mask = SelfAttentionMask()
         self.output = CopyTokenDecoder(vocabs, self.tgt_embed, label_smoothing, embed_dim, ff_embed_dim, dropout)
+        self.mem_bias_scale = nn.Parameter(torch.ones(1))
         self.dropout = dropout
 
     ####Retriever####
@@ -328,6 +329,7 @@ class RetrieverGenerator(nn.Module):
     @torch.no_grad()
     def work(self, data, beam_size, max_time_step, min_time_step=1):
         src_repr, src_mask, mem_repr, mem_mask, copy_seq, mem_bias = self.encode_step(data, work=True)
+        mem_bias = mem_bias * self.mem_bias_scale
         mem_dict = {'encoder_state':src_repr,
                     'encoder_state_mask':src_mask,
                     'mem_encoder_state':mem_repr,
@@ -344,6 +346,8 @@ class RetrieverGenerator(nn.Module):
         src_repr, src_mask, mem_repr, mem_mask, copy_seq, mem_bias = self.encode_step(data)
         if not update_mem_bias:
             mem_bias = mem_bias.detach()
+        #print (self.mem_bias_scale)
+        mem_bias = mem_bias * self.mem_bias_scale
         tgt_in_repr = self.embed_scale * self.tgt_embed(data['tgt_tokens_in']) + self.tgt_pos_embed(data['tgt_tokens_in'])
         tgt_in_repr = F.dropout(tgt_in_repr, p=self.dropout, training=self.training)
         tgt_in_mask = torch.eq(data['tgt_tokens_in'], self.vocabs['tgt'].padding_idx)

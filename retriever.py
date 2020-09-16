@@ -92,6 +92,10 @@ class Retriever(nn.Module):
         mem_ret = {}
         mem_ret['top1_retrieval_raw_sents'] = [x[0][0] for x in mem_sents]
         mem_ret['all_mem_tokens'] = all_mem_tokens
+        #print (all_mem_scores.view(-1, bsz)[:, 0])
+        #print (all_mem_scores.view(-1, bsz)[:, 1])
+        #print (all_mem_scores.view(-1, bsz)[:, 2])
+
         mem_ret['all_mem_scores'] = all_mem_scores
         mem_ret['num_mem_sents_per_instance'] = self.topk
         return src, src_mask, mem_ret
