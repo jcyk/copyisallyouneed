@@ -11,8 +11,6 @@ python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${data
         --dev_batch_size 2048 \
         --per_gpu_train_batch_size 4096 \
         --add_retrieval_loss \
-        --eval_every 100
-#        --resume_ckpt ${dataset}/epoch1_batch4999_devbleu52.94  \
-#        --eval_every 100
+        --resume_ckpt ${dataset}/epoch1_batch4999_devbleu52.94
 
 

@@ -120,8 +120,8 @@ def main(args, local_rank):
                 args.enc_layers, args.dec_layers, args.mem_enc_layers, args.label_smoothing)
 
     if args.resume_ckpt:
-        global_step = 4800
         model.load_state_dict(torch.load(args.resume_ckpt)['model'])
+        global_step = 5000
     else:
         global_step = 0
 
@@ -129,11 +129,17 @@ def main(args, local_rank):
         set_seed(19940117 + dist.get_rank())
 
     model = model.to(device)
-    optimizer = Adam(model.parameters(), lr=args.embed_dim**-0.5, betas=(0.9, 0.98), eps=1e-9)
+
+    retriever_params = [ v for k, v in model.named_parameters() if k.startswith('retriever.')]
+    other_params = [ v for k, v in model.named_parameters() if not k.startswith('retriever.')]
+
+    optimizer = Adam([ {'params':retriever_params, 'lr':args.embed_dim**-0.5*0.1},
+                       {'params':other_params, 'lr': args.embed_dim**-0.5}], betas=(0.9, 0.98), eps=1e-9)
     lr_schedule = get_inverse_sqrt_schedule_with_warmup(optimizer, args.warmup_steps, args.total_train_steps)
     train_data = DataLoader(vocabs, args.train_data, args.per_gpu_train_batch_size,
                             for_train=True, rank=local_rank, num_replica=args.world_size)
     if args.add_retrieval_loss:
+
         retr_train_data = RetrieverDataLoader(vocabs, args.train_data, args.in_batch_negatives, worddrop=args.worddrop, for_train=True)
         it_retr_train_data = iter(retr_train_data)
     model.eval()
@@ -144,10 +150,12 @@ def main(args, local_rank):
     tr_stat = Statistics()
     logger.info("start training")
     model.train()
+    matchingmodel.train()
 
     for x in matchingmodel.response_encoder.parameters():
         x.requires_grad = False
 
+    
     while global_step <= args.total_train_steps:
         for batch in train_data:
             step_start = time.time()
@@ -167,7 +175,7 @@ def main(args, local_rank):
                     it_retr_train_data = iter(retr_train_data)
                     batch = next(it_retr_train_data)
                 batch = move_to_device(batch, device)
-                loss_retrieval, acc_retrieval, bsz_retrieval = matchingmodel(batch['src_tokens'], batch['tgt_tokens'])
+                loss_retrieval, acc_retrieval, bsz_retrieval = matchingmodel(batch['src_tokens'], batch['tgt_tokens'], label_smoothing=args.label_smoothing)
                 tr_stat.update({'loss_retrieval':loss_retrieval.item() * bsz_retrieval,
                                 'acc_retrieval':acc_retrieval * bsz_retrieval,
                                 'bsz_retrieval':bsz_retrieval})
@@ -195,12 +203,14 @@ def main(args, local_rank):
                     tr_stat = Statistics()
                 if global_step % args.eval_every == -1 % args.eval_every:
                     model.eval()
+                    matchingmodel.eval()
                     dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False) 
                     max_time_step = 100 if global_step > args.warmup_steps else 5
                     bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=max_time_step)
                     logger.info("epoch %d, step %d, dev bleu %.2f", epoch, global_step, bleu)
                     torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_devbleu%.2f'%(args.ckpt, epoch, global_step, bleu))
                     model.train()
+                    matchingmodel.train()
             if global_step > args.total_train_steps:
                 break
         epoch += 1
