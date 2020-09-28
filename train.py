@@ -150,24 +150,28 @@ def main(args, local_rank):
     tr_stat = Statistics()
     logger.info("start training")
     model.train()
-    matchingmodel.train()
 
-    for x in matchingmodel.response_encoder.parameters():
-        x.requires_grad = False
+    if args.add_retrieval_loss:
+        matchingmodel.train()
+
+        for x in matchingmodel.response_encoder.parameters():
+            x.requires_grad = False
 
     
     while global_step <= args.total_train_steps:
         for batch in train_data:
             step_start = time.time()
-            #batch = move_to_device(batch, device)
-            #loss, acc = model(batch, update_mem_bias=(global_step > args.update_retriever_after))
-            tr_stat.update({'loss':0., 'tokens':1, 'acc':0.})
-            #tr_stat.update({'loss':loss.item() * batch['tgt_num_tokens'],
-            #                'tokens':batch['tgt_num_tokens'],
-            #                'acc':acc})
+            batch = move_to_device(batch, device)
+            if args.arch == 'rg':
+                loss, acc = model(batch, update_mem_bias=(global_step > args.update_retriever_after))
+            else:
+                loss, acc = model(batch)
+            #tr_stat.update({'loss':0., 'tokens':1, 'acc':0.})
+            tr_stat.update({'loss':loss.item() * batch['tgt_num_tokens'],
+                            'tokens':batch['tgt_num_tokens'],
+                            'acc':acc})
             tr_stat.step()
-            #loss = loss * 0. 
-            #loss.backward()
+            loss.backward()
             if args.add_retrieval_loss:
                 try:
                     batch = next(it_retr_train_data)
@@ -203,14 +207,16 @@ def main(args, local_rank):
                     tr_stat = Statistics()
                 if global_step % args.eval_every == -1 % args.eval_every:
                     model.eval()
-                    matchingmodel.eval()
+                    if args.add_retrieval_loss:
+                        matchingmodel.eval()
                     dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False) 
                     max_time_step = 100 if global_step > args.warmup_steps else 5
                     bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=max_time_step)
                     logger.info("epoch %d, step %d, dev bleu %.2f", epoch, global_step, bleu)
                     torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_devbleu%.2f'%(args.ckpt, epoch, global_step, bleu))
                     model.train()
-                    matchingmodel.train()
+                    if args.add_retrieval_loss:
+                        matchingmodel.train()
             if global_step > args.total_train_steps:
                 break
         epoch += 1
