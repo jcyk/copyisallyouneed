@@ -33,6 +33,7 @@ def parse_config():
     parser.add_argument('--share_encoder', action='store_true')
     parser.add_argument('--retriever', type=str, default=None)
     parser.add_argument('--nprobe', type=int, default=64)
+    parser.add_argument('--num_retriever_heads', type=int, default=1)
     parser.add_argument('--topk', type=int, default=5)
  
     # dropout / label_smoothing
@@ -108,11 +109,11 @@ def main(args, local_rank):
         logger.info("start building model")
         logger.info("building retriever")
         if args.add_retrieval_loss:
-            retriever, another_model = Retriever.from_pretrained(vocabs, args.retriever, args.nprobe, args.topk, local_rank, load_response_encoder=True)
+            retriever, another_model = Retriever.from_pretrained(vocabs, args.retriever, args.nprobe, args.num_retriever_heads, args.topk, local_rank, load_response_encoder=True)
             matchingmodel = MatchingModel(retriever.model, another_model)
             matchingmodel = matchingmodel.to(device)
         else:
-            retriever = Retriever.from_pretrained(vocabs, args.retriever, args.nprobe, args.topk, local_rank)
+            retriever = Retriever.from_pretrained(vocabs, args.retriever, args.nprobe, args.num_retriever_heads, args.topk, local_rank)
 
         logger.info("building retriever + generator")
         model = RetrieverGenerator(vocabs, retriever, args.share_encoder,

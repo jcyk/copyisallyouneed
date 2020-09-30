@@ -12,7 +12,7 @@ from mips import MIPS, augment_query, l2_to_ip
 from data import BOS, EOS, ListsToTensor, _back_to_txt_for_check
 
 class Retriever(nn.Module):
-    def __init__(self, vocabs, model, mips, mips_max_norm, mem_pool, mem_feat, topk, gpuid):
+    def __init__(self, vocabs, model, mips, mips_max_norm, mem_pool, mem_feat, num_heads, topk, gpuid):
         super(Retriever, self).__init__()
         self.model = model
         self.mips = mips
@@ -21,83 +21,71 @@ class Retriever(nn.Module):
         self.mips_max_norm = mips_max_norm
         self.mem_pool = mem_pool
         self.mem_feat = mem_feat
+        self.num_heads = num_heads
         self.topk = topk
         self.vocabs = vocabs
 
     @classmethod
-    def from_pretrained(cls, vocabs, input_dir, nprobe, topk, gpuid, load_response_encoder=False):
+    def from_pretrained(cls, num_heads, vocabs, input_dir, nprobe, topk, gpuid, load_response_encoder=False):
         model_args = torch.load(os.path.join(input_dir, 'args'))
-        model = ProjEncoder.from_pretrained(vocabs['src'], model_args, os.path.join(input_dir, 'query_encoder'))
+        model = MultiProjEncoder.from_pretrained(num_heads, vocabs['src'], model_args, os.path.join(input_dir, 'query_encoder'))
         mips = MIPS.from_built(os.path.join(input_dir, 'mips_index'), nprobe=nprobe)
         mips_max_norm = torch.load(os.path.join(input_dir, 'max_norm.pt'))
         mem_pool = [line.strip().split() for line in open(os.path.join(input_dir, 'candidates.txt')).readlines()]
         mem_feat = torch.load(os.path.join(input_dir, 'feat.pt'))
-        retriever = cls(vocabs, model, mips, mips_max_norm, mem_pool, mem_feat, topk, gpuid)
+        retriever = cls(vocabs, model, mips, mips_max_norm, mem_pool, mem_feat, num_heads, topk, gpuid)
         if load_response_encoder:
             another_model = ProjEncoder.from_pretrained(vocabs['tgt'], model_args, os.path.join(input_dir, 'response_encoder'))
             return retriever, another_model
         return retriever
 
     def work(self, inp, allow_hit):
-        src_tokens = inp['src_tokens'] 
+        src_tokens = inp['src_tokens']
         src_feat, src, src_mask = self.model(src_tokens, return_src=True)
-        vecsq = src_feat.detach().cpu().numpy()
-        retrieval_start = time.time()
+        num_heads, bsz, dim = src_feat.size()
+        assert num_heads == self.num_heads
+        topk = self.topk
+        vecsq = src_feat.view(bsz * num_heads, -1).detach().cpu().numpy()
+        #retrieval_start = time.time()
         vecsq = augment_query(vecsq)
-        D, I = self.mips.search(vecsq, self.topk + 1)
+        D, I = self.mips.search(vecsq, topk + 1)
         D = l2_to_ip(D, vecsq, self.mips_max_norm) / (self.mips_max_norm * self.mips_max_norm)
-        mem_sents = []
+        # I, D: (bsz * num_heads x (topk + 1) )
+        indices = torch.zeros(topk, num_heads, bsz, dtype=torch.long)
         for i, (Ii, Di) in enumerate(zip(I, D)):
-            tmplist = []
-            for pred, s in zip(Ii, Di):
-                mem = self.mem_pool[pred]
-                if allow_hit or mem!=inp['tgt_raw_sents'][i]:
-                    mem_feat = self.mem_feat[pred]
-                    score = float(s)
-                    #ip = torch.sum(src_feat[i] * mem_feat.to(src_feat.device))
-                    #norm_times_norm = torch.norm(src_feat[i]) * torch.norm(mem_feat)
-                    #print ('single score', ip/norm_times_norm, score)
-                    tmplist.append([mem, mem_feat, score])
-            tmplist = tmplist[:self.topk]
-            assert len(tmplist) == self.topk
-            mem_sents.append(tmplist)
-        retrieval_cost = time.time() - retrieval_start
+            bid, hid = i % bsz, i // bsz
+            tmp_list = []
+            for pred, _ in zip(Ii, Di):
+                if allow_hit or self.mem_pool[pred]!=inp['tgt_raw_sents'][bid]:
+                    tmp_list.append(pred)
+            tmp_list = tmp_list[:topk]
+            assert len(tmp_list) == topk
+            indices[:, hid, bid] = tmp_list
+        #retrieval_cost = time.time() - retrieval_start
         #print ('retrieval_cost', retrieval_cost)
-
-        # put all memory tokens (across the same batch) in a single list:
-        # No.1 memory for sentence 1, ..., No.1 memory for sentence N, No.2 memory for sentence 1, ...
-        # then convert to tensors:
-        # all_mem_tokens -> seq_len x ( num_mem_sents_per_instance * bsz )
-        # all_mem_scores -> num_mem_sents_per_instance * bsz
-        # all_mem_feats -> num_mem_sents_per_instance * bsz x dim
+        # convert to tensors:
+        # all_mem_tokens -> seq_len x ( topk * num_heads * bsz )
+        # all_mem_feats -> topk * num_heads * bsz x dim
         all_mem_tokens = []
-        all_mem_scores = []
-        all_mem_feats = []
-        for t in zip(*mem_sents):
-            all_mem_tokens.extend([tokens+[EOS] for tokens, _, _ in t])
-            all_mem_scores.extend([score for _, _, score in t])
-            all_mem_feats.extend([feat for _, feat, _ in t])
-        bsz, dim = src_feat.size()
-        src_feat = src_feat.view(1, bsz, dim)
-        all_mem_feats = torch.stack(all_mem_feats, dim=0).to(src_feat.device).view(-1, bsz, dim)
-
-        #all_mem_scores_ = torch.tensor(all_mem_scores, dtype=torch.float, device=src_feat.device)
-        all_mem_scores = torch.sum(src_feat * all_mem_feats, dim=-1).view(-1) / (self.mips_max_norm ** 2)
-
+        all_mem_feats = [] 
+        for idx in indices.view(-1).tolist():
+            all_mem_tokens.append(self.mem_pool[idx]+[EOS])
+            all_mem_feats.append(self.mem_feat[idx])
         all_mem_tokens = ListsToTensor(all_mem_tokens, self.vocabs['tgt'])
+        all_mem_feats = torch.stack(all_mem_feats, dim=0).to(src_feat.device).view(-1, num_heads, bsz, dim)
+        
         # to avoid GPU OOM issue, truncate the mem to the max. length of 1.5 x src_tokens
         max_mem_len = int(1.5 * src_tokens.shape[0])
         all_mem_tokens = move_to_device(all_mem_tokens[:max_mem_len,:], inp['src_tokens'].device)
+        
+        # all_mem_scores -> topk x num_heads x bsz
+        all_mem_scores = torch.sum(src_feat.unsqueeze(0) * all_mem_feats, dim=-1) / (self.mips_max_norm ** 2)
 
         mem_ret = {}
-        mem_ret['top1_retrieval_raw_sents'] = [x[0][0] for x in mem_sents]
+        indices = indices.view(-1, bsz).transpose(0, 1).tolist():
+        mem_ret['retrieval_raw_sents'] = [ [self.mem_pool[idx] for idx in ind] for ind in indices]
         mem_ret['all_mem_tokens'] = all_mem_tokens
-        #print (all_mem_scores.view(-1, bsz)[:, 0])
-        #print (all_mem_scores.view(-1, bsz)[:, 1])
-        #print (all_mem_scores.view(-1, bsz)[:, 2])
-
         mem_ret['all_mem_scores'] = all_mem_scores
-        mem_ret['num_mem_sents_per_instance'] = self.topk
         return src, src_mask, mem_ret
 
 class MatchingModel(nn.Module):
@@ -157,6 +145,39 @@ class MatchingModel(nn.Module):
         model = cls(query_encoder, response_encoder)
         return model
 
+class MultiProjEncoder(nn.Module):
+    def __init__(self, num_proj_heads, vocab, layers, embed_dim, ff_embed_dim, num_heads, dropout, output_dim):
+        super(MultiProjEncoder, self).__init__()
+        self.encoder = MonoEncoder(vocab, layers, embed_dim, ff_embed_dim, num_heads, dropout)
+        self.proj = nn.Linear(embed_dim, num_proj_heads*output_dim)
+        self.num_proj_heads = num_proj_heads
+        self.output_dim = output_dim
+        self.dropout = dropout
+        self.reset_parameters()
+
+    def forward(self, input_ids, batch_first=False, return_src=False):
+        if batch_first:
+            input_ids = input_ids.t()
+        src, src_mask = self.encoder(input_ids) 
+        ret = src[0,:,:]
+        ret = F.dropout(ret, p=self.dropout, training=self.training)
+        ret = self.proj(ret).view(-1, self.num_proj_heads, self.output_dim).transpose(0, 1)
+        ret = layer_norm(F.dropout(ret, p=self.dropout, training=self.training))
+        if return_src:
+            return ret, src, src_mask
+        return ret
+
+    @classmethod
+    def from_pretrained_projencoder(cls, num_proj_heads, vocab, model_args, ckpt):
+        model = cls(num_proj_heads, vocab, model_args.layers, model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.output_dim)
+        state_dict = torch.load(ckpt, map_location='cpu')
+        model.encoder.load_state_dict({k[len('encoder.'):]:v for k,v in x.items() if k.startswith('encoder.')})
+        weight = state_dict['proj.weight'].repeat(num_proj_heads, 1)
+        bias = state_dict['proj.weight'].repeat(num_proj_heads)
+        model.proj.weight = nn.Parameter(weight)
+        model.proj.bias = nn.Parameter(bias)
+        return model
+
 class ProjEncoder(nn.Module):
     def __init__(self, vocab, layers, embed_dim, ff_embed_dim, num_heads, dropout, output_dim):
         super(ProjEncoder, self).__init__()
@@ -175,7 +196,8 @@ class ProjEncoder(nn.Module):
         src, src_mask = self.encoder(input_ids) 
         ret = src[0,:,:]
         ret = F.dropout(ret, p=self.dropout, training=self.training)
-        ret = layer_norm(self.proj(ret))
+        ret = self.proj(ret)
+        ret = layer_norm(F.dropout(ret, p=self.dropout, training=self.training))
         if return_src:
             return ret, src, src_mask
         return ret

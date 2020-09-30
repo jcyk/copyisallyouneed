@@ -127,16 +127,16 @@ class MemGenerator(nn.Module):
 
         src_repr, src_mask = self.encoder(inp['src_tokens'])
         mem_repr, mem_mask = self.mem_encoder(inp['all_mem_tokens'])
-        # mem_repr -> seq_len x ( num_mem_sents_per_instance * bsz ) x dim
-        # mem_mask -> seq_len x ( num_mem_sents_per_instance * bsz )
+        # mem_repr -> seq_len x ( num_mem_sents * bsz) x dim
+        # mem_mask -> seq_len x ( num_mem_sents * bsz)
         seq_len, _, dim = mem_repr.size()
         bsz = src_repr.size(1)
         mem_repr = mem_repr.view(-1, bsz, dim)
         mem_mask = mem_mask.view(-1, bsz)
         copy_seq = inp['all_mem_tokens'].view(-1, bsz)
 
-        attn_bias = inp['all_mem_scores'].view(1, -1, bsz).expand(seq_len, -1, bsz).reshape(-1, bsz)
         #TODO
+        #attn_bias = inp['all_mem_scores'].view(1, -1, bsz).expand(seq_len, -1, bsz).reshape(-1, bsz)
         attn_bias = None
         return src_repr, src_mask, mem_repr, mem_mask, copy_seq, attn_bias
 
@@ -246,7 +246,8 @@ class RetrieverGenerator(nn.Module):
         self.embed_scale = math.sqrt(embed_dim)
         self.self_attn_mask = SelfAttentionMask()
         self.output = CopyTokenDecoder(vocabs, self.tgt_embed, label_smoothing, embed_dim, ff_embed_dim, dropout)
-        self.mem_bias_scale = nn.Parameter(torch.ones(1))
+        self.mem_bias_scale = nn.Parameter(torch.ones(retriever.num_heads))
+        self.mem_bias_base = nn.Parameter(torch.zeros(retriever.num_heads))
         self.dropout = dropout
 
     ####Retriever####
@@ -256,23 +257,26 @@ class RetrieverGenerator(nn.Module):
         return src, src_mask, mem_ret
     ####Retriever####
 
-    def encode_step(self, inp, work=False):
-        src_repr, src_mask, mem_ret = self.retrieve_step(inp, work)
+    def encode_step(self, inp, work=False, update_mem_bias=True):
+        src_repr, src_mask, mem_ret = self.retrieve_step(inp, allow_hit=work)
         if not self.share_encoder:
             src_repr, src_mask = self.encoder(inp['src_tokens'])
         inp.update(mem_ret)
 
-
         mem_repr, mem_mask = self.mem_encoder(inp['all_mem_tokens'])
-        # mem_repr -> seq_len x ( num_mem_sents_per_instance * bsz ) x dim
-        # mem_mask -> seq_len x ( num_mem_sents_per_instance * bsz )
+        # mem_repr -> seq_len x ( topk * num_heads * bsz ) x dim
+        # mem_mask -> seq_len x ( topk * num_heads * bsz )
         seq_len, _, dim = mem_repr.size()
         bsz = src_repr.size(1)
         mem_repr = mem_repr.view(-1, bsz, dim)
         mem_mask = mem_mask.view(-1, bsz)
         copy_seq = inp['all_mem_tokens'].view(-1, bsz)
 
-        attn_bias = inp['all_mem_scores'].view(1, -1, bsz).expand(seq_len, -1, bsz).reshape(-1, bsz)
+        attn_bias = inp['all_mem_scores']
+        if not update_mem_bias:
+            attn_bias = attn_bias.detach()
+        attn_bias = attn_bias * self.mem_bias_scale.view(1, -1, 1) + self.mem_bias_base.view(1, -1, 1)
+        attn_bias = attn_bias.unsqueeze(0).expand(seq_len, -1, -1, -1).reshape(-1, bsz)
         return src_repr, src_mask, mem_repr, mem_mask, copy_seq, attn_bias
 
     def prepare_incremental_input(self, step_seq):
@@ -331,7 +335,6 @@ class RetrieverGenerator(nn.Module):
     @torch.no_grad()
     def work(self, data, beam_size, max_time_step, min_time_step=1):
         src_repr, src_mask, mem_repr, mem_mask, copy_seq, mem_bias = self.encode_step(data, work=True)
-        mem_bias = mem_bias * self.mem_bias_scale
         mem_dict = {'encoder_state':src_repr,
                     'encoder_state_mask':src_mask,
                     'mem_encoder_state':mem_repr,
@@ -345,11 +348,7 @@ class RetrieverGenerator(nn.Module):
         return beams
 
     def forward(self, data, update_mem_bias=True):
-        src_repr, src_mask, mem_repr, mem_mask, copy_seq, mem_bias = self.encode_step(data)
-        if not update_mem_bias:
-            mem_bias = mem_bias.detach()
-        #print (self.mem_bias_scale)
-        mem_bias = mem_bias * self.mem_bias_scale
+        src_repr, src_mask, mem_repr, mem_mask, copy_seq, mem_bias = self.encode_step(data, update_mem_bias=update_mem_bias)
         tgt_in_repr = self.embed_scale * self.tgt_embed(data['tgt_tokens_in']) + self.tgt_pos_embed(data['tgt_tokens_in'])
         tgt_in_repr = F.dropout(tgt_in_repr, p=self.dropout, training=self.training)
         tgt_in_mask = torch.eq(data['tgt_tokens_in'], self.vocabs['tgt'].padding_idx)

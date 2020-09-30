@@ -137,28 +137,25 @@ def batchify(data, vocabs):
     # only if there is some memory input
     if data[0]['mem_sents']:
         num_mem_sents = len(data[0]['mem_sents'])
-        mem_sents = []
         for x in data:
-            assert len(x['mem_sents']) == num_mem_sents
-            mem_sents.append(x['mem_sents'])
+            assert len(x['mem_sents']) == len(x['mem_scores']) == num_mem_sents
         # put all memory tokens (across the same batch) in a single list:
-        # No.1 memory for sentence 1, ..., No.1 memory for sentence N, No.2 memory for sentence 1, ...
-        # then convert to tensors:
-        # all_mem_tokens -> seq_len x ( num_mem_sents_per_instance * bsz )
-        # all_mem_scores -> num_mem_sents_per_instance * bsz
+        # No.1 memory for sentence 1, ..., No.1 memory for sentence N,
+        # No.2 memory for sentence 1, ...
         all_mem_tokens = []
         all_mem_scores = []
-        for t in zip(*mem_sents):
-            assert len(t) == len(data), (len(t), len(data))
-            all_mem_tokens.extend([tokens+[EOS] for tokens, _ in t])
-            all_mem_scores.extend([scores for _, scores in t])
-
+        for i in range(num_mem_sents):
+            all_mem_tokens.extend([x['mem_sents'][i] + [EOS] for x in data])
+            all_mem_scores.extend([x['mem_scores'][i] for x in data])
+        # then convert to tensors:
+        # all_mem_tokens -> seq_len x (num_mem_sents * bsz)
+        # all_mem_scores -> num_mem_sents * bsz
         ret['all_mem_tokens'] = ListsToTensor(all_mem_tokens, vocabs['tgt'])
+        ret['all_mem_scores'] = np.array(all_mem_scores, dtype=np.float32)
         # to avoid GPU OOM issue, truncate the mem to the max. length of 1.5 x src_tokens
         max_mem_len = int(1.5 * src_token.shape[0])
         ret['all_mem_tokens'] = ret['all_mem_tokens'][:max_mem_len,:]
-        ret['all_mem_scores'] = np.array(all_mem_scores, dtype=np.float32)
-        ret['num_mem_sents_per_instance'] = num_mem_sents
+        #ret['retrieval_raw_sents'] = [x['mem_sents'] for x in data]
 
     return ret
 
@@ -170,7 +167,7 @@ class DataLoader(object):
 
         src_tokens, tgt_tokens = [], []
         src_sizes, tgt_sizes = [], []
-        mem_sents = []
+        mem_sents, mem_scores = []
         for line in open(filename).readlines()[rank::num_replica]:
             src, tgt, *mem = line.strip().split('\t')
             src, tgt = src.split()[:max_seq_len], tgt.split()[:max_seq_len]
@@ -179,13 +176,15 @@ class DataLoader(object):
             src_tokens.append(src)
             tgt_tokens.append(tgt)
 
-            mem_sents.append([(ref.split()[:max_seq_len], float(score)) for ref, score in zip(mem[:-1:2], mem[1::2])])
+            mem_sents.append([ref.split()[:max_seq_len] for ref in mem[:-1:2]])
+            mem_scores.append([float(score) for score in mem[1::2]])
 
         self.src = src_tokens
         self.tgt = tgt_tokens
         self.src_sizes = np.array(src_sizes)
         self.tgt_sizes = np.array(tgt_sizes)
-        self.mem = mem_sents
+        self.mem_sents = mem_sents
+        self.mem_scores = mem_scores
         logger.info("(DataLoader rank %d) read %s file with %d paris. max src len: %d, max tgt len: %d", rank, filename, len(self.src), self.src_sizes.max(), self.tgt_sizes.max())
 
     def __len__(self):
@@ -221,8 +220,9 @@ class DataLoader(object):
             for i in batch:
                 src_tokens = self.src[i]
                 tgt_tokens = self.tgt[i]
-                mem_sents = self.mem[i]
-                item = {'src_tokens':src_tokens, 'tgt_tokens':tgt_tokens, 'mem_sents':mem_sents, 'index':i}
+                mem_sents = self.mem_sents[i]
+                mem_scores = self.mem_scores[i]
+                item = {'src_tokens':src_tokens, 'tgt_tokens':tgt_tokens, 'mem_sents':mem_sents, 'mem_scores':mem_scores, 'index':i}
                 data.append(item)
             yield batchify(data, self.vocabs)
 

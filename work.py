@@ -39,15 +39,15 @@ def validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=100
 
     ref_stream = []
     sys_stream = []
-    sys_retr_stream = []
+    topk_sys_retr_stream = []
     for batch in test_data:
         batch = move_to_device(batch, device)
         res, _ = generate_batch(model, batch, beam_size, alpha, max_time_step)
         sys_stream.extend(res)
         ref_stream.extend(batch['tgt_raw_sents'])
-        sys_retr = batch.get('top1_retrieval_raw_sents', None)
+        sys_retr = batch.get('retrieval_raw_sents', None)
         if sys_retr:
-            sys_retr_stream.extend(sys_retr)
+            topk_sys_retr_stream.extend(sys_retr)
 
     assert len(sys_stream) == len(ref_stream)
 
@@ -58,18 +58,20 @@ def validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=100
     bleu = sacrebleu.corpus_bleu(sys_stream, ref_streams, 
                           force=True, lowercase=False,
                           tokenize='none').score
-    if sys_retr_stream:
-        assert len(sys_retr_stream) == len(ref_stream)
-        sys_retr_stream = [ re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(o)) for o in sys_retr_stream]
-        lratio = []
-        for aa, bb in zip(sys_retr_stream, ref_stream):
-            laa = len(aa.split())
-            lbb = len(bb.split())
-            lratio.append(max(laa/lbb, lbb/laa))
-        bleu_retr = sacrebleu.corpus_bleu(sys_retr_stream, ref_streams, 
-                          force=True, lowercase=False,
-                          tokenize='none').score
-        logger.info("Retrieval top1 bleu %.2f length ratio %.2f", bleu_retr, sum(lratio)/len(lratio))
+    if topk_sys_retr_stream:
+        assert len(topk_sys_retr_stream) == len(ref_stream)
+        topk = len(topk_sys_retr_stream[0])
+        for i in range(topk):
+            sys_retr_stream = [ re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(o[i])) for o in topk_sys_retr_stream]
+            lratio = []
+            for aa, bb in zip(sys_retr_stream, ref_stream):
+                laa = len(aa.split())
+                lbb = len(bb.split())
+                lratio.append(max(laa/lbb, lbb/laa))
+            bleu_retr = sacrebleu.corpus_bleu(sys_retr_stream, ref_streams, 
+                              force=True, lowercase=False,
+                              tokenize='none').score
+            logger.info("Retrieval top%d bleu %.2f length ratio %.2f", i+1, bleu_retr, sum(lratio)/len(lratio))
     return bleu
 
 if __name__ == "__main__":
@@ -104,7 +106,7 @@ if __name__ == "__main__":
             model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.mem_dropout,
             model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing)
     elif model_args.arch == 'rg':
-        retriever = Retriever.from_pretrained(vocabs, model_args.retriever, model_args.nprobe, model_args.topk, -1)
+        retriever = Retriever.from_pretrained(vocabs, model_args.retriever, model_args.nprobe, model_args.num_retriever_heads, model_args.topk, -1)
         model = RetrieverGenerator(vocabs, retriever, model_args.share_encoder,
                 model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.mem_dropout,
                 model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing)
