@@ -253,12 +253,13 @@ class RetrieverGenerator(nn.Module):
     ####Retriever####
     def retrieve_step(self, inp, work):
         #_back_to_txt_for_check(inp['tgt_tokens_in'], self.vocabs['tgt'])
-        src, src_mask, mem_ret = self.retriever.work(inp, work)
+        src, src_mask, mem_ret = self.retriever.work(inp, allow_hit=work)
         return src, src_mask, mem_ret
     ####Retriever####
 
     def encode_step(self, inp, work=False, update_mem_bias=True):
-        src_repr, src_mask, mem_ret = self.retrieve_step(inp, allow_hit=work)
+
+        src_repr, src_mask, mem_ret = self.retrieve_step(inp, work)
         if not self.share_encoder:
             src_repr, src_mask = self.encoder(inp['src_tokens'])
         inp.update(mem_ret)
@@ -277,6 +278,7 @@ class RetrieverGenerator(nn.Module):
             attn_bias = attn_bias.detach()
         attn_bias = attn_bias * self.mem_bias_scale.view(1, -1, 1) + self.mem_bias_base.view(1, -1, 1)
         attn_bias = attn_bias.unsqueeze(0).expand(seq_len, -1, -1, -1).reshape(-1, bsz)
+
         return src_repr, src_mask, mem_repr, mem_mask, copy_seq, attn_bias
 
     def prepare_incremental_input(self, step_seq):

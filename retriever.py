@@ -28,7 +28,7 @@ class Retriever(nn.Module):
     @classmethod
     def from_pretrained(cls, num_heads, vocabs, input_dir, nprobe, topk, gpuid, load_response_encoder=False):
         model_args = torch.load(os.path.join(input_dir, 'args'))
-        model = MultiProjEncoder.from_pretrained(num_heads, vocabs['src'], model_args, os.path.join(input_dir, 'query_encoder'))
+        model = MultiProjEncoder.from_pretrained_projencoder(num_heads, vocabs['src'], model_args, os.path.join(input_dir, 'query_encoder'))
         mips = MIPS.from_built(os.path.join(input_dir, 'mips_index'), nprobe=nprobe)
         mips_max_norm = torch.load(os.path.join(input_dir, 'max_norm.pt'))
         mem_pool = [line.strip().split() for line in open(os.path.join(input_dir, 'candidates.txt')).readlines()]
@@ -45,7 +45,7 @@ class Retriever(nn.Module):
         num_heads, bsz, dim = src_feat.size()
         assert num_heads == self.num_heads
         topk = self.topk
-        vecsq = src_feat.view(bsz * num_heads, -1).detach().cpu().numpy()
+        vecsq = src_feat.reshape(num_heads * bsz, -1).detach().cpu().numpy() 
         #retrieval_start = time.time()
         vecsq = augment_query(vecsq)
         D, I = self.mips.search(vecsq, topk + 1)
@@ -60,7 +60,7 @@ class Retriever(nn.Module):
                     tmp_list.append(pred)
             tmp_list = tmp_list[:topk]
             assert len(tmp_list) == topk
-            indices[:, hid, bid] = tmp_list
+            indices[:, hid, bid] = torch.tensor(tmp_list)
         #retrieval_cost = time.time() - retrieval_start
         #print ('retrieval_cost', retrieval_cost)
         # convert to tensors:
@@ -82,7 +82,7 @@ class Retriever(nn.Module):
         all_mem_scores = torch.sum(src_feat.unsqueeze(0) * all_mem_feats, dim=-1) / (self.mips_max_norm ** 2)
 
         mem_ret = {}
-        indices = indices.view(-1, bsz).transpose(0, 1).tolist():
+        indices = indices.view(-1, bsz).transpose(0, 1).tolist()
         mem_ret['retrieval_raw_sents'] = [ [self.mem_pool[idx] for idx in ind] for ind in indices]
         mem_ret['all_mem_tokens'] = all_mem_tokens
         mem_ret['all_mem_scores'] = all_mem_scores
@@ -153,7 +153,6 @@ class MultiProjEncoder(nn.Module):
         self.num_proj_heads = num_proj_heads
         self.output_dim = output_dim
         self.dropout = dropout
-        self.reset_parameters()
 
     def forward(self, input_ids, batch_first=False, return_src=False):
         if batch_first:
@@ -171,9 +170,9 @@ class MultiProjEncoder(nn.Module):
     def from_pretrained_projencoder(cls, num_proj_heads, vocab, model_args, ckpt):
         model = cls(num_proj_heads, vocab, model_args.layers, model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.output_dim)
         state_dict = torch.load(ckpt, map_location='cpu')
-        model.encoder.load_state_dict({k[len('encoder.'):]:v for k,v in x.items() if k.startswith('encoder.')})
+        model.encoder.load_state_dict({k[len('encoder.'):]:v for k,v in state_dict.items() if k.startswith('encoder.')})
         weight = state_dict['proj.weight'].repeat(num_proj_heads, 1)
-        bias = state_dict['proj.weight'].repeat(num_proj_heads)
+        bias = state_dict['proj.bias'].repeat(num_proj_heads)
         model.proj.weight = nn.Parameter(weight)
         model.proj.bias = nn.Parameter(bias)
         return model

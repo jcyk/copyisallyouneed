@@ -167,7 +167,7 @@ class DataLoader(object):
 
         src_tokens, tgt_tokens = [], []
         src_sizes, tgt_sizes = [], []
-        mem_sents, mem_scores = []
+        mem_sents, mem_scores = [], []
         for line in open(filename).readlines()[rank::num_replica]:
             src, tgt, *mem = line.strip().split('\t')
             src, tgt = src.split()[:max_seq_len], tgt.split()[:max_seq_len]
