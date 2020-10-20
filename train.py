@@ -141,7 +141,7 @@ def main(args, local_rank):
                             for_train=True, rank=local_rank, num_replica=args.world_size)
     if args.add_retrieval_loss:
 
-        retr_train_data = RetrieverDataLoader(vocabs, args.train_data, args.in_batch_negatives, worddrop=args.worddrop, for_train=True)
+        retr_train_data = RetrieverDataLoader(vocabs, args.train_data, args.in_batch_negatives, worddrop=args.worddrop)
         it_retr_train_data = iter(retr_train_data)
     model.eval()
     dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False)

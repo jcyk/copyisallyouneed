@@ -102,7 +102,7 @@ class MatchingModel(nn.Module):
         q = self.query_encoder(query)
         r = self.response_encoder(response)
  
-        scores = torch.mm(q, r.t()) # bsz x bsz
+        scores = torch.mm(q, r.t()) # bsz x (bsz + adt)
 
         gold = torch.arange(bsz, device=scores.device)
         _, pred = torch.max(scores, -1)
@@ -161,7 +161,7 @@ class MultiProjEncoder(nn.Module):
         ret = src[0,:,:]
         ret = F.dropout(ret, p=self.dropout, training=self.training)
         ret = self.proj(ret).view(-1, self.num_proj_heads, self.output_dim).transpose(0, 1)
-        ret = layer_norm(F.dropout(ret, p=self.dropout, training=self.training))
+        ret = F.dropout(layer_norm(ret), p=self.dropout, training=self.training)
         if return_src:
             return ret, src, src_mask
         return ret
@@ -196,7 +196,7 @@ class ProjEncoder(nn.Module):
         ret = src[0,:,:]
         ret = F.dropout(ret, p=self.dropout, training=self.training)
         ret = self.proj(ret)
-        ret = layer_norm(F.dropout(ret, p=self.dropout, training=self.training))
+        ret = layer_norm(ret)
         if return_src:
             return ret, src, src_mask
         return ret

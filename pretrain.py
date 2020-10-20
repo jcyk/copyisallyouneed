@@ -33,6 +33,7 @@ def parse_config():
 
     # training
     parser.add_argument('--resume_ckpt', type=str, default=None)
+    parser.add_argument('--additional_negs', action='store_true')
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1)
     parser.add_argument('--total_train_steps', type=int, default=100000)
@@ -45,7 +46,7 @@ def parse_config():
     parser.add_argument('--dev_data', type=str, default='dev.txt')
     parser.add_argument('--ckpt', type=str, default='ckpt')
     parser.add_argument('--print_every', type=int, default=100)
-    parser.add_argument('--eval_every', type=int, default=1000)
+    parser.add_argument('--eval_every', type=int, default=5000)
 
     # distributed training
     parser.add_argument('--world_size', type=int, default=1)
@@ -61,6 +62,10 @@ def batchify(data, vocabs, worddrop):
     src_tokens = [[BOS] + x['src_tokens'] for x in data]
     tgt_tokens = [[BOS] + x['tgt_tokens'] for x in data]
 
+    if 'adt_tokens' in data[0]:
+        adt_tokens = [[BOS] + x['adt_tokens'] for x in data]
+        tgt_tokens = tgt_tokens + adt_tokens
+
     src_token = ListsToTensor(src_tokens, vocabs['src'], worddrop)
     tgt_token = ListsToTensor(tgt_tokens, vocabs['tgt'], worddrop)
 
@@ -71,21 +76,28 @@ def batchify(data, vocabs, worddrop):
     return ret
 
 class DataLoader(object):
-    def __init__(self, vocabs, filename, batch_size, for_train, worddrop=0., max_seq_len=256):
+    def __init__(self, vocabs, filename, batch_size, worddrop=0., max_seq_len=256, addition=True):
         self.vocabs = vocabs
         self.batch_size = batch_size
-        self.train = for_train
         self.worddrop = worddrop
+        self.addition = addition
 
         src_tokens, tgt_tokens = [], []
+        adt_sents = []
         for line in open(filename).readlines():
-            src, tgt = line.strip().split('\t')
+            if self.addition:
+                src, tgt, *adt = line.strip().split('\t')
+                adt = [ x.split()[:max_seq_len] for x in adt[::2] ]
+                adt_sents.append(adt)
+            else:
+                src, tgt = line.strip().split('\t')
             src, tgt = src.split()[:max_seq_len], tgt.split()[:max_seq_len]
             src_tokens.append(src)
             tgt_tokens.append(tgt)
 
         self.src = src_tokens
         self.tgt = tgt_tokens
+        self.adt = adt_sents
 
     def __len__(self):
         return len(self.src)
@@ -98,7 +110,10 @@ class DataLoader(object):
         
         cur = 0
         while cur < len(indices):
-            data = [{'src_tokens':self.src[i], 'tgt_tokens':self.tgt[i]} for i in indices[cur:cur+self.batch_size]]
+            if self.addition:
+                data = [{'src_tokens':self.src[i], 'tgt_tokens':self.tgt[i], 'adt_tokens':random.choice(self.adt[i])} for i in indices[cur:cur+self.batch_size]]
+            else:
+                data = [{'src_tokens':self.src[i], 'tgt_tokens':self.tgt[i]} for i in indices[cur:cur+self.batch_size]]
             cur += self.batch_size
             yield batchify(data, self.vocabs, self.worddrop)
 
@@ -155,13 +170,13 @@ def main(args, local_rank):
     model = model.to(device)
 
     if args.resume_ckpt:
-        dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False)
+        dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, addition=True)
         acc = validate(model, dev_data, device)
         logger.info("initialize from %s, initial acc %.2f", args.resume_ckpt, acc)
 
     optimizer = Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98), eps=1e-9)
     lr_schedule = get_linear_schedule_with_warmup(optimizer, args.warmup_steps, args.total_train_steps)
-    train_data = DataLoader(vocabs, args.train_data, args.per_gpu_train_batch_size, worddrop=args.worddrop, for_train=True)
+    train_data = DataLoader(vocabs, args.train_data, args.per_gpu_train_batch_size, worddrop=args.worddrop, addition=True)
     global_step, step, epoch = 0, 0, 0
     tr_stat = Statistics()
     logger.info("start training")
@@ -194,7 +209,7 @@ def main(args, local_rank):
                     logger.info("epoch %d, step %d, loss %.3f, acc %.3f", epoch, global_step, tr_stat['loss']/tr_stat['nsamples'], tr_stat['acc']/tr_stat['nsamples'])
                     tr_stat = Statistics()
                 if global_step > args.warmup_steps and global_step % args.eval_every == -1 % args.eval_every:
-                    dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False)
+                    dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, addition=True)
                     acc = validate(model, dev_data, device)
                     logger.info("epoch %d, step %d, dev, dev acc %.2f", epoch, global_step, acc)
                     save_path = '%s/epoch%d_batch%d_acc%.2f'%(args.ckpt, epoch, global_step, acc)
