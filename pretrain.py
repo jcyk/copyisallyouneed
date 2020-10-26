@@ -103,10 +103,8 @@ class DataLoader(object):
         return len(self.src)
 
     def __iter__(self):
-        if self.train:
-            indices = np.random.permutation(len(self))
-        else:
-            indices = np.arange(len(self))
+        indices = np.random.permutation(len(self))
+        #indices = np.arange(len(self))
         
         cur = 0
         while cur < len(indices):
@@ -170,13 +168,13 @@ def main(args, local_rank):
     model = model.to(device)
 
     if args.resume_ckpt:
-        dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, addition=True)
+        dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, addition=args.additional_negs)
         acc = validate(model, dev_data, device)
         logger.info("initialize from %s, initial acc %.2f", args.resume_ckpt, acc)
 
     optimizer = Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98), eps=1e-9)
     lr_schedule = get_linear_schedule_with_warmup(optimizer, args.warmup_steps, args.total_train_steps)
-    train_data = DataLoader(vocabs, args.train_data, args.per_gpu_train_batch_size, worddrop=args.worddrop, addition=True)
+    train_data = DataLoader(vocabs, args.train_data, args.per_gpu_train_batch_size, worddrop=args.worddrop, addition=args.additional_negs)
     global_step, step, epoch = 0, 0, 0
     tr_stat = Statistics()
     logger.info("start training")
@@ -209,7 +207,7 @@ def main(args, local_rank):
                     logger.info("epoch %d, step %d, loss %.3f, acc %.3f", epoch, global_step, tr_stat['loss']/tr_stat['nsamples'], tr_stat['acc']/tr_stat['nsamples'])
                     tr_stat = Statistics()
                 if global_step > args.warmup_steps and global_step % args.eval_every == -1 % args.eval_every:
-                    dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, addition=True)
+                    dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, addition=args.additional_negs)
                     acc = validate(model, dev_data, device)
                     logger.info("epoch %d, step %d, dev, dev acc %.2f", epoch, global_step, acc)
                     save_path = '%s/epoch%d_batch%d_acc%.2f'%(args.ckpt, epoch, global_step, acc)

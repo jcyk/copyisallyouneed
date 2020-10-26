@@ -158,7 +158,7 @@ def main(args, local_rank):
         for x in matchingmodel.response_encoder.parameters():
             x.requires_grad = False
 
-    
+    best_dev_bleu = 0.
     while global_step <= args.total_train_steps:
         for batch in train_data:
             step_start = time.time()
@@ -214,7 +214,9 @@ def main(args, local_rank):
                     max_time_step = 100 if global_step > args.warmup_steps else 5
                     bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=max_time_step)
                     logger.info("epoch %d, step %d, dev bleu %.2f", epoch, global_step, bleu)
-                    torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_devbleu%.2f'%(args.ckpt, epoch, global_step, bleu))
+                    if bleu > best_dev_bleu:
+                        torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_devbleu%.2f'%(args.ckpt, epoch, global_step, bleu))
+                        best_dev_bleu = bleu
                     model.train()
                     if args.add_retrieval_loss:
                         matchingmodel.train()

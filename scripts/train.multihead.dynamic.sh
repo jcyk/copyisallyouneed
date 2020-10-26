@@ -3,12 +3,15 @@ python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${data
         --dev_data ${dataset}/dev.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --retriever ${dataset}/ckpt.pretrain.6layers/epoch19_batch99999_acc0.98 \
-        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/ckpt.multihead.16 \
+        --retriever /apdcephfs/share_916081/jcykcai/mt.ckpts/retriever/ckpt.pretrain.neg.2/epoch9_batch99999_acc0.02 \
+        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/ckpt.better.retriever \
         --world_size 2 \
         --gpus 2 \
         --arch rg \
         --dev_batch_size 2048 \
         --per_gpu_train_batch_size 4096 \
         --num_retriever_heads 1 \
-        --topk 6
+        --topk 5
+
+
+#{dataset}/ckpt.pretrain.6layers/epoch19_batch99999_acc0.98
