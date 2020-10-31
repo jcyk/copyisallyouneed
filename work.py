@@ -59,6 +59,7 @@ def validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=100
                           force=True, lowercase=False,
                           tokenize='none').score
     if topk_sys_retr_stream:
+        sys_retr_streams = []
         assert len(topk_sys_retr_stream) == len(ref_stream)
         topk = len(topk_sys_retr_stream[0])
         for i in range(topk):
@@ -71,7 +72,13 @@ def validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=100
             bleu_retr = sacrebleu.corpus_bleu(sys_retr_stream, ref_streams, 
                               force=True, lowercase=False,
                               tokenize='none').score
+            sys_retr_streams.append(sys_retr_stream)
             logger.info("Retrieval top%d bleu %.2f length ratio %.2f", i+1, bleu_retr, sum(lratio)/len(lratio))
+        logger.info("show some examples >>>")
+        for sample_id in [5, 6, 11, 22, 33, 44, 55, 66, 555, 666]:
+            retrieval = [ "%d: %s"%(i, sys_retr_streams[i][sample_id]) for i in range(topk)]
+            logger.info("%d: %s###\n generation: %s###\nretrieval:\n %s", sample_id, ref_stream[sample_id], sys_stream[sample_id], '\n'.join(retrieval))
+        logger.info("<<< show some examples")
     return bleu
 
 if __name__ == "__main__":

@@ -4,11 +4,13 @@ import random
 import torch.multiprocessing as mp
 import torch.distributed as dist
 import numpy as np
+import math
 
-from data import Vocab, BOS, EOS, ListsToTensor, _back_to_txt_for_check
+from data import Vocab, BOS, EOS, UNK, ListsToTensor, _back_to_txt_for_check
 from optim import Adam, get_linear_schedule_with_warmup
 from utils import move_to_device, set_seed, average_gradients, Statistics
 from retriever import MatchingModel
+from collections import Counter
 
 
 logger = logging.getLogger(__name__)
@@ -28,10 +30,12 @@ def parse_config():
 
     # dropout / label_smoothing
     parser.add_argument('--worddrop', type=float, default=0.33)
+    # if worddrop < 0, we are using idf-based masking
     parser.add_argument('--dropout', type=float, default=0.1)
     parser.add_argument('--label_smoothing', type=float, default=0.1)
 
     # training
+    parser.add_argument('--bow', action='store_true')
     parser.add_argument('--resume_ckpt', type=str, default=None)
     parser.add_argument('--additional_negs', action='store_true')
     parser.add_argument('--lr', type=float, default=1e-4)
@@ -57,22 +61,30 @@ def parse_config():
 
     return parser.parse_args()
 
-def batchify(data, vocabs, worddrop):
+def compute_idf(sents):
+    df = Counter()
+    n = 0
+    for sent in sents:
+        for word in set(sent):
+            df[word] += 1
+        n += 1
 
-    src_tokens = [[BOS] + x['src_tokens'] for x in data]
-    tgt_tokens = [[BOS] + x['tgt_tokens'] for x in data]
+    idf = dict()
+    for word in df:
+        idf[word] = 1 + np.log((1+n) / (1 + df[word]))
+    idf[BOS] = 123456789
+    return idf
 
-    if 'adt_tokens' in data[0]:
-        adt_tokens = [[BOS] + x['adt_tokens'] for x in data]
-        tgt_tokens = tgt_tokens + adt_tokens
-
-    src_token = ListsToTensor(src_tokens, vocabs['src'], worddrop)
-    tgt_token = ListsToTensor(tgt_tokens, vocabs['tgt'], worddrop)
-
-    ret = {
-        'src_tokens': src_token,
-        'tgt_tokens': tgt_token,
-    }
+def idf_based_mask(sents, idf):
+    # 1/3 * 0 + 2/3 * 1/2 = 1/3
+    ret = []
+    for sent in sents:
+        indices = list(range(len(sent)))
+        lowest = math.floor(len(sent) * 2 / 3)
+        masked_sent = [ w for w in sent]
+        for i in sorted(indices, key=lambda x:idf[sent[x]])[:lowest]
+            masked_sent[i] = sent[i] if random.random() < 0.5 else UNK
+        ret.append(masked_sent)
     return ret
 
 class DataLoader(object):
@@ -98,6 +110,30 @@ class DataLoader(object):
         self.src = src_tokens
         self.tgt = tgt_tokens
         self.adt = adt_sents
+        self.idf_src = compute_idf(self.src)
+        self.idf_tgt = compute_idf(self.tgt)
+
+    def batchify(self, data, vocabs, worddrop):
+
+        src_tokens = [[BOS] + x['src_tokens'] for x in data]
+        tgt_tokens = [[BOS] + x['tgt_tokens'] for x in data]
+
+        if 'adt_tokens' in data[0]:
+            adt_tokens = [[BOS] + x['adt_tokens'] for x in data]
+            tgt_tokens = tgt_tokens + adt_tokens
+
+        if worddrop < 0.:
+            src_tokens = ListsToTensor(idf_based_mask(src_tokens, self.idf_src), self.vocabs['src'])
+            tgt_tokens = ListsToTensor(idf_based_mask(tgt_tokens, self.idf_tgt), self.vocabs['tgt'])
+        else:
+            src_tokens = ListsToTensor(src_tokens, self.vocabs['src'], self.worddrop)
+            tgt_tokens = ListsToTensor(tgt_tokens, self.vocabs['tgt'], self.worddrop)
+
+        ret = {
+            'src_tokens': src_tokens,
+            'tgt_tokens': tgt_tokens,
+        }
+        return ret
 
     def __len__(self):
         return len(self.src)
@@ -113,7 +149,7 @@ class DataLoader(object):
             else:
                 data = [{'src_tokens':self.src[i], 'tgt_tokens':self.tgt[i]} for i in indices[cur:cur+self.batch_size]]
             cur += self.batch_size
-            yield batchify(data, self.vocabs, self.worddrop)
+            yield self.batchify(data)
 
 @torch.no_grad()
 def validate(model, dev_data, device):
@@ -160,7 +196,7 @@ def main(args, local_rank):
     if args.resume_ckpt:
         model = MatchingModel.from_pretrained(vocabs, args.resume_ckpt)
     else:
-        model = MatchingModel.from_params(vocabs, args.layers, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.output_dim)
+        model = MatchingModel.from_params(vocabs, args.layers, args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.output_dim, args.bow)
 
     if args.world_size > 1:
         set_seed(19940117 + dist.get_rank())

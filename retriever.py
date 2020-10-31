@@ -88,11 +88,46 @@ class Retriever(nn.Module):
         mem_ret['all_mem_scores'] = all_mem_scores
         return src, src_mask, mem_ret
 
+class BOWModel(nn.Module):
+    def __init__(self, tgt_embed):
+        ## bag of words autoencoder
+        super(BOWModel, self).__init__()
+        vocab_size, embed_dim = tgt_embed.weight.shape
+        self.proj = nn.Linear(embed_dim, embed_dim)
+        self.output_projection = nn.Linear(
+                embed_dim,
+                vocab_size,
+                bias=False,
+        )
+        self.output_projection.weight = tgt_embed.weight
+        self.reset_parameters()
+    
+    def reset_parameters(self):
+        nn.init.normal_(self.proj.weight, std=0.02)
+        nn.init.constant_(self.proj.bias, 0.)
+
+    def forward(self, outs, label):
+        # bow loss
+        bsz, seq_len = label.shape
+        label_mask = torch.le(label, 3) # except for PAD UNK BOS EOS
+        logits = self.output_projection(self.proj(outs))
+        logits = logits.unsqueeze(-1).expand(-1, -1, seq_len)
+        #bsz x vocab x seq_len
+
+        loss = F.cross_entropy(logits, label, reduction='none').masked_fill(label_mask, 0.)
+        loss = loss.sum(dim=-1).mean()
+
+        return loss
+
 class MatchingModel(nn.Module):
-    def __init__(self, query_encoder, response_encoder):
+    def __init__(self, query_encoder, response_encoder, bow=False):
         super(MatchingModel, self).__init__()
         self.query_encoder = query_encoder
         self.response_encoder = response_encoder
+        self.bow = bow
+        if self.bow:
+            self.query_bow = BOWModel(query_encoder.encoder.src_embed)
+            self.response_bow = BOWModel(query_encoder.encoder.src_embed)
 
     def forward(self, query, response, label_smoothing=0.):
         ''' query and response: [seq_len, batch_size]
@@ -112,6 +147,10 @@ class MatchingModel(nn.Module):
         loss, _ = label_smoothed_nll_loss(log_probs, gold, label_smoothing, sum=True)
         loss = loss / bsz
 
+        if self.bow:
+            loss_bow_q = self.query_bow(q_src, query.transpose())
+            loss_bow_r = self.response_bow(q_src, response.transpose())
+            loss = loss + loss_bow_q + loss_bow_r
         return loss, acc, bsz
 
     def work(self, query, response):
@@ -131,10 +170,10 @@ class MatchingModel(nn.Module):
         torch.save(model_args, os.path.join(output_dir, 'args'))
 
     @classmethod
-    def from_params(cls, vocabs, layers, embed_dim, ff_embed_dim, num_heads, dropout, output_dim):
+    def from_params(cls, vocabs, layers, embed_dim, ff_embed_dim, num_heads, dropout, output_dim, bow):
         query_encoder = ProjEncoder(vocabs['src'], layers, embed_dim, ff_embed_dim, num_heads, dropout, output_dim)
         response_encoder = ProjEncoder(vocabs['tgt'], layers, embed_dim, ff_embed_dim, num_heads, dropout, output_dim)
-        model = cls(query_encoder, response_encoder)
+        model = cls(query_encoder, response_encoder, bow)
         return model
     
     @classmethod
