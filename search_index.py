@@ -82,7 +82,19 @@ def main(args):
                 item['retrieval'] = [{'response':textr[pred], 'score':float(s)} for pred, s in zip(Ii, Di)]
                 fo.write(json.dumps(item)+'\n')
             cur += bsz
-
+    # TODO
+    # ret = json.loads(line0.strip())
+    # q, r = line1.strip().split('\t')
+    # tmp = [q, r]
+    # for x in ret['retrieval']:
+    #     if x['response'] == r:
+    #         continue
+    #     score = str(x['score'])
+    #     tmp.append(x['response'])
+    #     tmp.append(score)
+    #     if len(tmp) == 12:
+    #         print ('\t'.join(tmp))
+    #         break
 if __name__ == "__main__":
     args = parse_args()
     main(args)

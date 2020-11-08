@@ -144,9 +144,6 @@ class MultiheadAttention(nn.Module):
         if attn_bias is not None:
             attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
             attn_bias = attn_bias.transpose(0, 1).unsqueeze(1).unsqueeze(2)
-            #if tgt_len != 1:
-            #    print (attn_weights.size(), attn_bias.size())
-            #    print (attn_weights[0, 0, :5, :5], attn_bias[0, 0, :5, :5])
             attn_weights = attn_weights + attn_bias
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
 

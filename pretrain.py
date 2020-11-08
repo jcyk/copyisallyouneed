@@ -50,7 +50,7 @@ def parse_config():
     parser.add_argument('--dev_data', type=str, default='dev.txt')
     parser.add_argument('--ckpt', type=str, default='ckpt')
     parser.add_argument('--print_every', type=int, default=100)
-    parser.add_argument('--eval_every', type=int, default=5000)
+    parser.add_argument('--eval_every', type=int, default=10000)
 
     # distributed training
     parser.add_argument('--world_size', type=int, default=1)
@@ -82,7 +82,7 @@ def idf_based_mask(sents, idf):
         indices = list(range(len(sent)))
         lowest = math.floor(len(sent) * 2 / 3)
         masked_sent = [ w for w in sent]
-        for i in sorted(indices, key=lambda x:idf[sent[x]])[:lowest]
+        for i in sorted(indices, key=lambda x:idf[sent[x]])[:lowest]:
             masked_sent[i] = sent[i] if random.random() < 0.5 else UNK
         ret.append(masked_sent)
     return ret
@@ -113,7 +113,7 @@ class DataLoader(object):
         self.idf_src = compute_idf(self.src)
         self.idf_tgt = compute_idf(self.tgt)
 
-    def batchify(self, data, vocabs, worddrop):
+    def batchify(self, data):
 
         src_tokens = [[BOS] + x['src_tokens'] for x in data]
         tgt_tokens = [[BOS] + x['tgt_tokens'] for x in data]
@@ -122,7 +122,7 @@ class DataLoader(object):
             adt_tokens = [[BOS] + x['adt_tokens'] for x in data]
             tgt_tokens = tgt_tokens + adt_tokens
 
-        if worddrop < 0.:
+        if self.worddrop < 0.:
             src_tokens = ListsToTensor(idf_based_mask(src_tokens, self.idf_src), self.vocabs['src'])
             tgt_tokens = ListsToTensor(idf_based_mask(tgt_tokens, self.idf_tgt), self.vocabs['tgt'])
         else:

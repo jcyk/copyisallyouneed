@@ -111,10 +111,9 @@ class BOWModel(nn.Module):
         bsz, seq_len = label.shape
         label_mask = torch.le(label, 3) # except for PAD UNK BOS EOS
         logits = self.output_projection(self.proj(outs))
-        logits = logits.unsqueeze(-1).expand(-1, -1, seq_len)
-        #bsz x vocab x seq_len
-
-        loss = F.cross_entropy(logits, label, reduction='none').masked_fill(label_mask, 0.)
+        lprobs = F.log_softmax(logits, dim=-1)
+        #bsz x vocab
+        loss = torch.gather(-lprobs, -1, label).masked_fill(label_mask, 0.)
         loss = loss.sum(dim=-1).mean()
 
         return loss
@@ -134,8 +133,10 @@ class MatchingModel(nn.Module):
         '''
         _, bsz = query.size()
         
-        q = self.query_encoder(query)
-        r = self.response_encoder(response)
+        q, q_src, _ = self.query_encoder(query, return_src=True)
+        r, r_src, _ = self.response_encoder(response, return_src=True)
+        q_src = q_src[0,:,:]
+        r_src = r_src[0,:,:]
  
         scores = torch.mm(q, r.t()) # bsz x (bsz + adt)
 
@@ -148,8 +149,8 @@ class MatchingModel(nn.Module):
         loss = loss / bsz
 
         if self.bow:
-            loss_bow_q = self.query_bow(q_src, query.transpose())
-            loss_bow_r = self.response_bow(q_src, response.transpose())
+            loss_bow_q = self.query_bow(q_src, query.transpose(0, 1))
+            loss_bow_r = self.response_bow(q_src, response.transpose(0, 1))
             loss = loss + loss_bow_q + loss_bow_r
         return loss, acc, bsz
 

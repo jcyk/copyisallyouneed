@@ -106,7 +106,7 @@ class Generator(nn.Module):
 class MemGenerator(nn.Module):
     def __init__(self, vocabs,
                 embed_dim, ff_embed_dim, num_heads, dropout, mem_dropout,
-                enc_layers, dec_layers, mem_enc_layers, label_smoothing):
+                enc_layers, dec_layers, mem_enc_layers, label_smoothing, use_mem_score):
         super(MemGenerator, self).__init__()
         self.vocabs = vocabs
 
@@ -121,7 +121,10 @@ class MemGenerator(nn.Module):
         self.embed_scale = math.sqrt(embed_dim)
         self.self_attn_mask = SelfAttentionMask()
         self.output = CopyTokenDecoder(vocabs, self.tgt_embed, label_smoothing, embed_dim, ff_embed_dim, dropout)
+        self.mem_bias_scale = nn.Parameter(torch.ones(1))
+        self.mem_bias_base = nn.Parameter(torch.zeros(1))
         self.dropout = dropout
+        self.use_mem_score = False
 
     def encode_step(self, inp):
 
@@ -135,9 +138,11 @@ class MemGenerator(nn.Module):
         mem_mask = mem_mask.view(-1, bsz)
         copy_seq = inp['all_mem_tokens'].view(-1, bsz)
 
-        #TODO
-        #attn_bias = inp['all_mem_scores'].view(1, -1, bsz).expand(seq_len, -1, bsz).reshape(-1, bsz)
-        attn_bias = None
+        if self.use_mem_score:
+            attn_bias = inp['all_mem_scores'] * self.mem_bias_scale + self.mem_bias_base
+            attn_bias = attn_bias.view(1, -1, bsz).expand(seq_len, -1, bsz).reshape(-1, bsz)
+        else:
+            attn_bias = None
         return src_repr, src_mask, mem_repr, mem_mask, copy_seq, attn_bias
 
     def prepare_incremental_input(self, step_seq):

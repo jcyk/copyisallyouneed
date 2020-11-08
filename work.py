@@ -111,7 +111,7 @@ if __name__ == "__main__":
     elif model_args.arch == 'mem':
         model = MemGenerator(vocabs,
             model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.mem_dropout,
-            model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing)
+            model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing, model_args.use_mem_score)
     elif model_args.arch == 'rg':
         retriever = Retriever.from_pretrained(vocabs, model_args.retriever, model_args.nprobe, model_args.num_retriever_heads, model_args.topk, -1)
         model = RetrieverGenerator(vocabs, retriever, model_args.share_encoder,
