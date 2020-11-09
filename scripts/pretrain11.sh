@@ -3,11 +3,10 @@ python3 /apdcephfs/private_jcykcai/copyisallyouneed/pretrain.py --train_data ${d
         --dev_data ${dataset}/dev.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/ckpt.exp.pretrain/exp1 \
+        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/ckpt.exp.pretrain/exp11 \
         --world_size 1 \
         --gpus 1 \
         --dev_batch_size 128 \
-        --layers 6 \
+        --layers 5 \
         --per_gpu_train_batch_size 128 \
-        --worddrop -1 \
         --bow

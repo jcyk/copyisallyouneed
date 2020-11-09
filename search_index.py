@@ -17,12 +17,13 @@ def parse_args():
     
     parser.add_argument('--input_file', type=str)
     parser.add_argument('--output_file', type=str)
-    parser.add_argument('--topk', type=int, default=10)
+    parser.add_argument('--topk', type=int, default=5)
+    parser.add_argument('--allow_hit', action='store_true')
 
     parser.add_argument('--vocab_path', type=str)
     parser.add_argument('--ckpt_path', type=str)
     parser.add_argument('--args_path', type=str)
-    parser.add_argument('--batch_size', type=int, default=1024)
+    parser.add_argument('--batch_size', type=int, default=2048)
 
     parser.add_argument('--nprobe', type=int, default=64)
     parser.add_argument('--index_file', type=str)
@@ -51,13 +52,15 @@ def main(args):
             data_r.append(r)
 
     data_q = []
+    data_qr = []
     with open(args.input_file, 'r') as f:
         for line in f.readlines():
-            q = line.strip()
+            q, r = line.strip().split('\t')
             data_q.append(q)
+            data_qr.append(r)
 
     logger.info('Collected %d instances', len(data_q))
-    textq, textr = data_q, data_r
+    textq, textqr, textr = data_q, data_qr, data_r
     data_loader = DataLoader(data_q, vocab, args.batch_size) 
 
     mips = MIPS.from_built(args.index_path, nprobe=args.nprobe)
@@ -67,7 +70,9 @@ def main(args):
     model = torch.nn.DataParallel(model, device_ids=list(range(torch.cuda.device_count())))
     model.eval()
 
-    cur = 0
+
+    logger.info('Start search')
+    cur, tot = 0, len(data_q)
     with open(args.output_file, 'w') as fo:
         for batch in asynchronous_load(data_loader):
             with torch.no_grad():
@@ -75,26 +80,21 @@ def main(args):
                 bsz = q.size(0)
                 vecsq = model(q, batch_first=True).detach().cpu().numpy()
             vecsq = augment_query(vecsq)
-            D, I = mips.search(vecsq, args.topk)
+            D, I = mips.search(vecsq, args.topk+1)
             D = l2_to_ip(D, vecsq, max_norm) / (max_norm * max_norm)
             for i, (Ii, Di) in enumerate(zip(I, D)):
-                item = {'query':textq[cur+i]}
-                item['retrieval'] = [{'response':textr[pred], 'score':float(s)} for pred, s in zip(Ii, Di)]
-                fo.write(json.dumps(item)+'\n')
+                item = [textq[cur+i], textqr[cur+i]]
+                for pred, s in zip(Ii, Di):
+                    if args.allow_hit or textr[pred] != textqr[cur+i]:
+                        item.append(textr[pred])
+                        item.append(str(float(s)))
+                item = item[:2+2*args.topk]
+                assert len(item) == 2+2*args.topk
+                fo.write('\t'.join(item)+'\n')
             cur += bsz
-    # TODO
-    # ret = json.loads(line0.strip())
-    # q, r = line1.strip().split('\t')
-    # tmp = [q, r]
-    # for x in ret['retrieval']:
-    #     if x['response'] == r:
-    #         continue
-    #     score = str(x['score'])
-    #     tmp.append(x['response'])
-    #     tmp.append(score)
-    #     if len(tmp) == 12:
-    #         print ('\t'.join(tmp))
-    #         break
+            logger.info('finished %d / %d', cur, tot)
+              
+
 if __name__ == "__main__":
     args = parse_args()
     main(args)

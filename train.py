@@ -47,8 +47,7 @@ def parse_config():
     parser.add_argument('--warmup_steps', type=int, default=4000)
     parser.add_argument('--per_gpu_train_batch_size', type=int, default=4096)
     parser.add_argument('--dev_batch_size', type=int, default=4096)
-    parser.add_argument('--in_batch_negatives', type=int, default=128)
-    parser.add_argument('--worddrop', type=float, default=0.33)
+
     parser.add_argument('--update_retriever_after', default=5000)
     
     # IO

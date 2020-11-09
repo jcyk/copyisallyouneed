@@ -121,10 +121,11 @@ class MemGenerator(nn.Module):
         self.embed_scale = math.sqrt(embed_dim)
         self.self_attn_mask = SelfAttentionMask()
         self.output = CopyTokenDecoder(vocabs, self.tgt_embed, label_smoothing, embed_dim, ff_embed_dim, dropout)
-        self.mem_bias_scale = nn.Parameter(torch.ones(1))
-        self.mem_bias_base = nn.Parameter(torch.zeros(1))
         self.dropout = dropout
-        self.use_mem_score = False
+        if use_mem_score:
+            self.mem_bias_scale = nn.Parameter(torch.ones(1))
+            self.mem_bias_base = nn.Parameter(torch.zeros(1))
+        self.use_mem_score = use_mem_score
 
     def encode_step(self, inp):
 
