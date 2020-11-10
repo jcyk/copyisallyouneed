@@ -74,19 +74,19 @@ class DataLoader(object):
             yield batchify(data, self.vocab)
 
 @torch.no_grad()
-def get_features(args, vocab, model, used_data, used_ids, max_norm=None, max_norm_cf=1.0):
+def get_features(batch_size, norm_th, vocab, model, used_data, used_ids, max_norm=None, max_norm_cf=1.0):
     vecs, ids = [], []
     model = torch.nn.DataParallel(model, device_ids=list(range(torch.cuda.device_count())))
     model.eval()
-    data_loader = DataLoader(used_data, vocab, args.batch_size)
+    data_loader = DataLoader(used_data, vocab, batch_size)
     cur, tot = 0, len(used_data)
     for batch in asynchronous_load(data_loader):
         batch = move_to_device(batch, torch.device('cuda', 0)).t()
         bsz = batch.size(0)
         cur_vecs = model(batch, batch_first=True).detach().cpu().numpy()
-        valid = np.linalg.norm(cur_vecs, axis=1) <= args.norm_th
+        valid = np.linalg.norm(cur_vecs, axis=1) <= norm_th
         vecs.append(cur_vecs[valid])
-        ids.append(used_ids[cur:cur+args.batch_size][valid])
+        ids.append(used_ids[cur:cur+batch_size][valid])
         cur += bsz
         logger.info("%d / %d", cur, tot)
     vecs = np.concatenate(vecs, 0)
@@ -117,16 +117,13 @@ def main(args):
 
     if args.only_dump_feat:
         max_norm = torch.load(os.path.join(os.path.dirname(args.index_path), 'max_norm.pt'))
-        cur = 0
-        while cur < len(data):
-            used_data = [x[0] for x in data[cur:cur+args.add_every]]
-            used_ids = np.array([x[1] for x in data[cur:cur+args.add_every]])
-            cur += args.add_every
-            used_data, used_ids, _ = get_features(args, vocab, model, used_data, used_ids, max_norm)
-            used_data = used_data[:,1:]
-            assert (used_ids == np.sort(used_ids)).all()
-            logger.info('Dumping %d instances', used_data.shape[0])
-            torch.save(torch.from_numpy(used_data), os.path.join(os.path.dirname(args.index_path), 'feat.pt')) 
+        used_data = [x[0] for x in data]
+        used_ids = np.array([x[1] for x in data])
+        used_data, used_ids, _ = get_features(args.batch_size, args.norm_th, vocab, model, used_data, used_ids, max_norm)
+        used_data = used_data[:,1:]
+        assert (used_ids == np.sort(used_ids)).all()
+        logger.info('Dumping %d instances', used_data.shape[0])
+        torch.save(torch.from_numpy(used_data), os.path.join(os.path.dirname(args.index_path), 'feat.pt')) 
         exit(0)
 
 
@@ -137,7 +134,7 @@ def main(args):
         used_data = [x[0] for x in data[:args.max_training_instances]]
         used_ids = np.array([x[1] for x in data[:args.max_training_instances]])
         logger.info('Computing feature for training')
-        used_data, used_ids, max_norm = get_features(args, vocab, model, used_data, used_ids, max_norm_cf=args.max_norm_cf)
+        used_data, used_ids, max_norm = get_features(args.batch_size, args.norm_th, vocab, model, used_data, used_ids, max_norm_cf=args.max_norm_cf)
         logger.info('Using %d instances for training', used_data.shape[0])
         mips = MIPS(model_args.output_dim+1, args.index_type, efSearch=args.efSearch, nprobe=args.nprobe) 
         mips.to_gpu()
@@ -159,7 +156,7 @@ def main(args):
             used_ids = np.array([x[1] for x in data[cur:cur+args.add_every]])
             cur += args.add_every
             logger.info('Computing feature for indexing')
-            used_data, used_ids, _ = get_features(args, vocab, model, used_data, used_ids, max_norm)
+            used_data, used_ids, _ = get_features(args.batch_size, args.norm_th, vocab, model, used_data, used_ids, max_norm)
             logger.info('Adding %d instances to index', used_data.shape[0])
             mips.add_with_ids(used_data, used_ids)
         mips.save(args.index_path)

@@ -237,17 +237,17 @@ class RetrieverGenerator(nn.Module):
         ####Retriever####
         self.share_encoder = share_encoder
         self.retriever = retriever
-        if share_encoder:
-            self.encoder = self.retriever.model.encoder
-        else:
-            self.encoder = MonoEncoder(vocabs['src'], enc_layers, embed_dim, ff_embed_dim, num_heads, dropout)
+        self.encoder = MonoEncoder(vocabs['src'], enc_layers, embed_dim, ff_embed_dim, num_heads, dropout)
         ####Retriever####
 
         self.tgt_embed = Embedding(vocabs['tgt'].size, embed_dim, vocabs['tgt'].padding_idx)
         self.tgt_pos_embed = SinusoidalPositionalEmbedding(embed_dim)
         self.decoder = Transformer(dec_layers, embed_dim, ff_embed_dim, num_heads, dropout, with_external=True)
         
-        self.mem_encoder = MonoEncoder(vocabs['tgt'], mem_enc_layers, embed_dim, ff_embed_dim, num_heads, mem_dropout)
+        if share_encoder:
+            self.mem_encoder = self.retriever.mem_feat_or_feat_maker.encoder
+        else:
+            self.mem_encoder = MonoEncoder(vocabs['tgt'], mem_enc_layers, embed_dim, ff_embed_dim, num_heads, mem_dropout)
         
         self.embed_scale = math.sqrt(embed_dim)
         self.self_attn_mask = SelfAttentionMask()

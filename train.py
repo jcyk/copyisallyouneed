@@ -47,7 +47,7 @@ def parse_config():
     parser.add_argument('--warmup_steps', type=int, default=4000)
     parser.add_argument('--per_gpu_train_batch_size', type=int, default=4096)
     parser.add_argument('--dev_batch_size', type=int, default=4096)
-
+    parser.add_argument('--rebuild_every', type=int, default=-1)
     parser.add_argument('--update_retriever_after', default=5000)
     
     # IO
@@ -66,14 +66,6 @@ def parse_config():
     parser.add_argument('--start_rank', type=int, default=0)
 
     return parser.parse_args()
-
-def partially_load(model, ckpt):
-    pretrained_dict = torch.load(ckpt)
-    model_dict = model.state_dict()
-    #model_dict_keys = set(model_dict.keys())
-    #pretrained_dict_keys = set(pretrained_dict.keys())
-    model_dict.update(pretrained_dict)
-    model.load_state_dict(model_dict)
 
 def main(args, local_rank):
 
@@ -107,22 +99,15 @@ def main(args, local_rank):
     elif args.arch == 'rg':
         logger.info("start building model")
         logger.info("building retriever")
-        retriever = Retriever.from_pretrained(args.num_retriever_heads, vocabs, args.retriever, args.nprobe, args.topk, local_rank)
+        retriever = Retriever.from_pretrained(args.num_retriever_heads, vocabs, args.retriever, args.nprobe, args.topk, local_rank, use_response_encoder=(args.rebuild_every > 0))
 
         logger.info("building retriever + generator")
         model = RetrieverGenerator(vocabs, retriever, args.share_encoder,
                 args.embed_dim, args.ff_embed_dim, args.num_heads, args.dropout, args.mem_dropout,
                 args.enc_layers, args.dec_layers, args.mem_enc_layers, args.label_smoothing)
-
-
-    #TODO offline joint update
-    #retriever, another_model = Retriever.from_pretrained(args.num_retriever_heads, vocabs, args.retriever, args.nprobe, args.topk, local_rank, load_response_encoder=True)
-    #matchingmodel = MatchingModel(retriever.model, another_model)
-    #matchingmodel = matchingmodel.to(device)
             
     if args.resume_ckpt:
         model.load_state_dict(torch.load(args.resume_ckpt)['model'])
-        global_step = 5000
     else:
         global_step = 0
 
@@ -193,6 +178,17 @@ def main(args, local_rank):
                         torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_devbleu%.2f'%(args.ckpt, epoch, global_step, bleu))
                         best_dev_bleu = bleu
                     model.train()
+
+            if args.rebuild_every > 0 and (global_step % args.rebuild_every == -1 % args.rebuild_every):
+                #torch.cuda.empty_cache()
+                next_index_dir = '%s/epoch%d_batch%d'%(args.ckpt, epoch, global_step)
+                if args.world_size == 1 or (dist.get_rank() == 0):
+                    model.retriever.rebuild_index(next_index_dir)
+                    dist.barrier()
+                else:
+                    dist.barrier()
+                model.retriever.update_index(next_index_dir, args.nprobe)
+
             if global_step > args.total_train_steps:
                 break
         epoch += 1

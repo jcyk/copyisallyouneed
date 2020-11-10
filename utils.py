@@ -7,6 +7,12 @@ import torch.multiprocessing as mp
 import random
 import numpy as np
 
+def partially_load(model, ckpt):
+    pretrained_dict = torch.load(ckpt)
+    model_dict = model.state_dict()
+    model_dict.update(pretrained_dict)
+    model.load_state_dict(model_dict)
+
 def move_to_device(maybe_tensor, device):
     if torch.is_tensor(maybe_tensor):
         return maybe_tensor.to(device)
