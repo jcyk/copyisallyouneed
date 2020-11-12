@@ -1,7 +1,7 @@
 set -e
 dataset=/apdcephfs/private_jcykcai/esen/full
 ckpt_prefix=/apdcephfs/share_916081/jcykcai/mt.ckpts/ckpt.exp.pretrain
-for ckpt_folder in exp5/epoch19_batch99999_acc0.99
+for ckpt_folder in exp16/epoch19_batch99999_acc0.99 exp17/epoch19_batch99999_acc0.99
 do
 python3 /apdcephfs/private_jcykcai/copyisallyouneed/test_retriever.py \
         --dev_data ${dataset}/dev.txt \

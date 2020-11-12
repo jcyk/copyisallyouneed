@@ -4,9 +4,8 @@ import logging
 import torch
 import numpy as np
 
-from mips import MIPS, augment_data
-from utils import move_to_device, asynchronous_load
-from retriever import ProjEncoder
+from mips import MIPS
+from retriever import ProjEncoder, get_features
 from data import Vocab, BOS, EOS, ListsToTensor
 
 logger = logging.getLogger(__name__)
@@ -40,59 +39,7 @@ def parse_args():
     parser.add_argument('--norm_th', type=float, default=999,
         help='will discard a vector if its norm is bigger than this value')
     parser.add_argument('--add_every', type=int, default=1000000)
-    return parser.parse_args()
-
-def batchify(data, vocab):
-
-    tokens = [[BOS] + x for x in data]
-
-    token = ListsToTensor(tokens, vocab)
-
-    return token
-
-class DataLoader(object):
-    def __init__(self, used_data, vocab, batch_size, max_seq_len=256):
-        self.vocab = vocab
-        self.batch_size = batch_size
-
-        data = []
-        for x in used_data:
-            x = x.split()[:max_seq_len]
-            data.append(x)
-        self.data = data
-
-    def __len__(self):
-        return len(self.data)
-
-    def __iter__(self):
-        indices = np.arange(len(self))
-        
-        cur = 0
-        while cur < len(indices):
-            data = [self.data[i] for i in indices[cur:cur+self.batch_size]]
-            cur += self.batch_size
-            yield batchify(data, self.vocab)
-
-@torch.no_grad()
-def get_features(batch_size, norm_th, vocab, model, used_data, used_ids, max_norm=None, max_norm_cf=1.0):
-    vecs, ids = [], []
-    model = torch.nn.DataParallel(model, device_ids=list(range(torch.cuda.device_count())))
-    model.eval()
-    data_loader = DataLoader(used_data, vocab, batch_size)
-    cur, tot = 0, len(used_data)
-    for batch in asynchronous_load(data_loader):
-        batch = move_to_device(batch, torch.device('cuda', 0)).t()
-        bsz = batch.size(0)
-        cur_vecs = model(batch, batch_first=True).detach().cpu().numpy()
-        valid = np.linalg.norm(cur_vecs, axis=1) <= norm_th
-        vecs.append(cur_vecs[valid])
-        ids.append(used_ids[cur:cur+batch_size][valid])
-        cur += bsz
-        logger.info("%d / %d", cur, tot)
-    vecs = np.concatenate(vecs, 0)
-    ids = np.concatenate(ids, 0)
-    out, max_norm = augment_data(vecs, max_norm, max_norm_cf)
-    return out, ids, max_norm
+    return parser.parse_args() 
 
 def main(args):
     logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s - %(message)s',

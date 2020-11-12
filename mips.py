@@ -56,6 +56,9 @@ class MIPS:
 
     def save(self, path):
         faiss.write_index(self.index, path)
+
+    def reset(self):
+        self.index.reset()
    
     @classmethod
     def from_built(cls, path, nprobe=None):

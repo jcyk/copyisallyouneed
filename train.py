@@ -180,7 +180,8 @@ def main(args, local_rank):
                     model.train()
 
             if args.rebuild_every > 0 and (global_step % args.rebuild_every == -1 % args.rebuild_every):
-                #torch.cuda.empty_cache()
+                model.retriever.drop_index()
+                torch.cuda.empty_cache()
                 next_index_dir = '%s/epoch%d_batch%d'%(args.ckpt, epoch, global_step)
                 if args.world_size == 1 or (dist.get_rank() == 0):
                     model.retriever.rebuild_index(next_index_dir)

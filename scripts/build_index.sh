@@ -3,7 +3,7 @@ set -e
 ckpt_prefix=/apdcephfs/share_916081/jcykcai/mt.ckpts/ckpt.exp.pretrain
 dataset=/apdcephfs/private_jcykcai/esen/full
 
-for ckpt_folder in exp15/epoch19_batch99999_acc0.98
+for ckpt_folder in exp16/epoch19_batch99999_acc0.99  exp17/epoch19_batch99999_acc0.99
 do
 echo ${ckpt_prefix}/${ckpt_folder}
 python3 /apdcephfs/private_jcykcai/copyisallyouneed/build_index.py \

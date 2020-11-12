@@ -3,8 +3,8 @@ python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${data
         --dev_data ${dataset}/dev.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --retriever /apdcephfs/share_916081/jcykcai/mt.ckpts/ckpt.exp.pretrain/exp15/epoch19_batch99999_acc0.98 \
-        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/ckpt.exp15.translation \
+        --retriever /apdcephfs/share_916081/jcykcai/mt.ckpts/ckpt.exp.pretrain/exp7/epoch19_batch99999_acc0.99 \
+        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/ckpt.exp7.translation \
         --world_size 2 \
         --gpus 2 \
         --arch rg \

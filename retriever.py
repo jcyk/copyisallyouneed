@@ -6,11 +6,10 @@ import math
 import os, time, random, logging
 
 from transformer import Transformer, SinusoidalPositionalEmbedding, Embedding
-from utils import move_to_device
+from utils import move_to_device, asynchronous_load
 from module import label_smoothed_nll_loss, layer_norm, MonoEncoder
-from mips import MIPS, augment_query, l2_to_ip
+from mips import MIPS, augment_query, augment_data, l2_to_ip
 from data import BOS, EOS, ListsToTensor, _back_to_txt_for_check
-from build_index import get_features
 
 logger = logging.getLogger(__name__)
 class Retriever(nn.Module):
@@ -44,24 +43,30 @@ class Retriever(nn.Module):
         retriever = cls(vocabs, model, mips, mips_max_norm, mem_pool, mem_feat_or_feat_maker, num_heads, topk, gpuid)
         return retriever
 
+    def drop_index(self):
+        self.mips.reset()
+        self.mips = None
+        self.mips_max_norm = None
+
     def update_index(self, index_dir, nprobe):
         self.mips = MIPS.from_built(os.path.join(index_dir, 'mips_index'), nprobe=nprobe)
         if self.gpuid >= 0:
             self.mips.to_gpu(gpuid=self.gpuid)
         self.mips_max_norm = torch.load(os.path.join(index_dir, 'max_norm.pt'))
 
-    def rebuild_index(self, index_dir, batch_size=2048, add_every=1000000, index_type='IVF1024_HNSW32,SQ8', norm_th=999, max_training_instances=1000000, max_norm_cf=1.0, efSearch=128):
+    def rebuild_index(self, index_dir, batch_size=2048, add_every=1000000, index_type='IVF1024_HNSW32,SQ8', norm_th=999, max_training_instances=1000000, max_norm_cf=1.0, nprobe=64, efSearch=128):
         if not os.path.exists(index_dir):
             os.mkdir(index_dir)
         max_norm = None
-        data = [ [x, i] for i, x in enumerate(self.mem_pool) ]
+        data = [ [' '.join(x), i] for i, x in enumerate(self.mem_pool) ]
         random.shuffle(data)
         used_data = [x[0] for x in data[:max_training_instances]]
         used_ids = np.array([x[1] for x in data[:max_training_instances]])
         logger.info('Computing feature for training')
-        used_data, used_ids, max_norm = get_features(batch_size, norm_th, vocab, self.mem_feat_or_feat_maker, used_data, used_ids, max_norm_cf=max_norm_cf)
+        used_data, used_ids, max_norm = get_features(batch_size, norm_th, self.vocabs['tgt'], self.mem_feat_or_feat_maker, used_data, used_ids, max_norm_cf=max_norm_cf)
+        torch.cuda.empty_cache()
         logger.info('Using %d instances for training', used_data.shape[0])
-        mips = MIPS(self.output_dim+1, index_type, efSearch=efSearch, nprobe=self.nprobe) 
+        mips = MIPS(self.model.output_dim+1, index_type, efSearch=efSearch, nprobe=nprobe) 
         mips.to_gpu()
         mips.train(used_data)
         mips.to_cpu()
@@ -117,7 +122,7 @@ class Retriever(nn.Module):
         max_mem_len = int(1.5 * src_tokens.shape[0])
         all_mem_tokens = move_to_device(all_mem_tokens[:max_mem_len,:], inp['src_tokens'].device)
        
-        if torch.is_tensor(self.mem_feat_or_feat_maker)
+        if torch.is_tensor(self.mem_feat_or_feat_maker):
             all_mem_feats = self.mem_feat_or_feat_maker[indices].to(src_feat.device)
         else:
             all_mem_feats = self.mem_feat_or_feat_maker(all_mem_tokens).view(topk, num_heads, bsz, dim)
@@ -293,3 +298,56 @@ class ProjEncoder(nn.Module):
         model = cls(vocab, model_args.layers, model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.output_dim)
         model.load_state_dict(torch.load(ckpt, map_location='cpu'))
         return model
+
+
+def batchify(data, vocab):
+
+    tokens = [[BOS] + x for x in data]
+
+    token = ListsToTensor(tokens, vocab)
+
+    return token
+
+class DataLoader(object):
+    def __init__(self, used_data, vocab, batch_size, max_seq_len=256):
+        self.vocab = vocab
+        self.batch_size = batch_size
+
+        data = []
+        for x in used_data:
+            x = x.split()[:max_seq_len]
+            data.append(x)
+        self.data = data
+
+    def __len__(self):
+        return len(self.data)
+
+    def __iter__(self):
+        indices = np.arange(len(self))
+
+        cur = 0
+        while cur < len(indices):
+            data = [self.data[i] for i in indices[cur:cur+self.batch_size]]
+            cur += self.batch_size
+            yield batchify(data, self.vocab)
+
+@torch.no_grad()
+def get_features(batch_size, norm_th, vocab, model, used_data, used_ids, max_norm=None, max_norm_cf=1.0):
+    vecs, ids = [], []
+    model = torch.nn.DataParallel(model, device_ids=list(range(torch.cuda.device_count())))
+    model.eval()
+    data_loader = DataLoader(used_data, vocab, batch_size)
+    cur, tot = 0, len(used_data)
+    for batch in asynchronous_load(data_loader):
+        batch = move_to_device(batch, torch.device('cuda', 0)).t()
+        bsz = batch.size(0)
+        cur_vecs = model(batch, batch_first=True).detach().cpu().numpy()
+        valid = np.linalg.norm(cur_vecs, axis=1) <= norm_th
+        vecs.append(cur_vecs[valid])
+        ids.append(used_ids[cur:cur+batch_size][valid])
+        cur += bsz
+        logger.info("%d / %d", cur, tot)
+    vecs = np.concatenate(vecs, 0)
+    ids = np.concatenate(ids, 0)
+    out, max_norm = augment_data(vecs, max_norm, max_norm_cf)
+    return out, ids, max_norm
