@@ -12,4 +12,3 @@ python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${data
         --per_gpu_train_batch_size 4096 \
         --num_retriever_heads 1 \
         --topk 5
-#${dataset}/ckpt.pretrain.6layers/epoch19_batch99999_acc0.98 

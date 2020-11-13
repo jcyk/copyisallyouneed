@@ -122,8 +122,8 @@ class DataLoader(object):
             adt_tokens = [[BOS] + x['adt_tokens'] for x in data]
             tgt_tokens = tgt_tokens + adt_tokens
 
-        ori_src_tokens = ListsToTensor(src_tokens, self.vocabs['src'])
-        ori_tgt_tokens = ListsToTensor(tgt_tokens, self.vocabs['tgt'])
+        #ori_src_tokens = ListsToTensor(src_tokens, self.vocabs['src'])
+        #ori_tgt_tokens = ListsToTensor(tgt_tokens, self.vocabs['tgt'])
         
         if self.worddrop < 0.:
             src_tokens = ListsToTensor(idf_based_mask(src_tokens, self.idf_src), self.vocabs['src'])
@@ -136,8 +136,6 @@ class DataLoader(object):
         ret = {
             'src_tokens': src_tokens,
             'tgt_tokens': tgt_tokens,
-            'ori_src_tokens': ori_src_tokens,
-            'ori_tgt_tokens': ori_tgt_tokens,
         }
         return ret
 
@@ -224,8 +222,7 @@ def main(args, local_rank):
     while global_step <= args.total_train_steps:
         for batch in train_data:
             batch = move_to_device(batch, device)
-            loss, acc, bsz = model(batch['src_tokens'], batch['tgt_tokens'], args.label_smoothing,
-                                   batch['ori_src_tokens'], batch['ori_tgt_tokens'])
+            loss, acc, bsz = model(batch['src_tokens'], batch['tgt_tokens'], args.label_smoothing)
             tr_stat.update({'loss':loss.item() * bsz,
                             'nsamples': bsz,
                             'acc':acc * bsz})

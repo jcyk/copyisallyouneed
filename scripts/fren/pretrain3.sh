@@ -1,12 +1,12 @@
-dataset=/apdcephfs/private_jcykcai/esen/full
+dataset=/apdcephfs/private_jcykcai/fren
 python3 /apdcephfs/private_jcykcai/copyisallyouneed/pretrain.py --train_data ${dataset}/train.txt \
         --dev_data ${dataset}/dev.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/ckpt.exp.pretrain/exp15 \
+        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/fren/ckpt.exp.pretrain3 \
         --world_size 1 \
         --gpus 1 \
         --dev_batch_size 128 \
-        --layers 4 \
+        --layers 3 \
         --per_gpu_train_batch_size 128 \
-        --worddrop 0.33
+        --bow

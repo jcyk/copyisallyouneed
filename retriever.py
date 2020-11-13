@@ -177,7 +177,7 @@ class MatchingModel(nn.Module):
             self.query_bow = BOWModel(query_encoder.encoder.src_embed)
             self.response_bow = BOWModel(query_encoder.encoder.src_embed)
 
-    def forward(self, query, response, label_smoothing=0., query_bow_label=None, response_bow_label=None):
+    def forward(self, query, response, label_smoothing=0.):
         ''' query and response: [seq_len, batch_size]
         '''
         _, bsz = query.size()
@@ -198,10 +198,8 @@ class MatchingModel(nn.Module):
         loss = loss / bsz
 
         if self.bow:
-            assert query_bow_label is not None
-            assert response_bow_label is not None
-            loss_bow_q = self.query_bow(q_src, query_bow_label.transpose(0, 1))
-            loss_bow_r = self.response_bow(q_src, response_bow_label.transpose(0, 1))
+            loss_bow_q = self.query_bow(q_src, query.transpose(0, 1))
+            loss_bow_r = self.response_bow(q_src, response.transpose(0, 1))
             loss = loss + loss_bow_q + loss_bow_r
         return loss, acc, bsz
 

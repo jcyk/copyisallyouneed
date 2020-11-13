@@ -54,6 +54,7 @@ def parse_config():
     parser.add_argument('--resume_ckpt', type=str, default=None)
     parser.add_argument('--train_data', type=str, default='dev.txt')
     parser.add_argument('--dev_data', type=str, default='dev.txt')
+    parser.add_argument('--test_data', type=str, default='dev.txt')
     parser.add_argument('--ckpt', type=str, default='ckpt')
     parser.add_argument('--print_every', type=int, default=100)
     parser.add_argument('--eval_every', type=int, default=1000)
@@ -127,6 +128,7 @@ def main(args, local_rank):
 
     model.eval()
     dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False)
+    test_data = DataLoader(vocabs, args.test_data, args.dev_batch_size, for_train=False)
     bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=10)
 
     step, epoch = 0, 0
@@ -137,7 +139,7 @@ def main(args, local_rank):
     best_dev_bleu = 0.
     while global_step <= args.total_train_steps:
         for batch in train_data:
-            step_start = time.time()
+            #step_start = time.time()
             batch = move_to_device(batch, device)
             if args.arch == 'rg':
                 loss, acc = model(batch, update_mem_bias=(global_step > args.update_retriever_after))
@@ -149,7 +151,7 @@ def main(args, local_rank):
                             'acc':acc})
             tr_stat.step()
             loss.backward()
-            step_cost = time.time() - step_start
+            #step_cost = time.time() - step_start
             #print ('step_cost', step_cost)
             step += 1
             if not (step % args.gradient_accumulation_steps == -1 % args.gradient_accumulation_steps):
@@ -175,7 +177,9 @@ def main(args, local_rank):
                     bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=max_time_step)
                     logger.info("epoch %d, step %d, dev bleu %.2f", epoch, global_step, bleu)
                     if bleu > best_dev_bleu:
-                        torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_devbleu%.2f'%(args.ckpt, epoch, global_step, bleu))
+                        testbleu = validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=max_time_step)
+                        logger.info("epoch %d, step %d, test bleu %.2f", epoch, global_step, testbleu)
+                        torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_devbleu%.2f_testbleu%.2f'%(args.ckpt, epoch, global_step, bleu, testbleu))
                         best_dev_bleu = bleu
                     model.train()
 
