@@ -1,10 +1,10 @@
-dataset=/apdcephfs/private_jcykcai/deen
+dataset=/apdcephfs/private_jcykcai/enes
 python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/train.txt \
         --dev_data ${dataset}/dev.txt \
         --test_data ${dataset}/test.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/deen/ckpt.vanilla \
+        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/enes/ckpt.vanilla \
         --world_size 2 \
         --gpus 2 \
         --arch vanilla \

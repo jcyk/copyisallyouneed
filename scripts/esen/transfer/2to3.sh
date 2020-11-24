@@ -4,9 +4,12 @@ python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${data
         --test_data ${dataset}/test.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/esen/ckpt.vanilla2.4 \
+        --retriever /apdcephfs/share_916081/jcykcai/mt.ckpts/esen/ckpt.exp.pretrain2.4/epoch39_batch99999_acc0.99_3.4 \
+        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/esen/transfer/2to3 \
         --world_size 2 \
         --gpus 2 \
-        --arch vanilla \
+        --arch rg \
         --dev_batch_size 2048 \
-        --per_gpu_train_batch_size 4096
+        --per_gpu_train_batch_size 4096 \
+        --num_retriever_heads 1 \
+        --topk 5

@@ -6,8 +6,7 @@ import torch
 import json
 
 from mips import MIPS, augment_query, l2_to_ip
-from retriever import ProjEncoder
-from build_index import DataLoader 
+from retriever import ProjEncoder, DataLoader 
 from utils import move_to_device, asynchronous_load
 from data import Vocab, BOS, EOS
 

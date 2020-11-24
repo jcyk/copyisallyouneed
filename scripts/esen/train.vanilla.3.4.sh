@@ -1,7 +1,7 @@
 dataset=/apdcephfs/private_jcykcai/esen/3.4
 python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/train.txt \
         --dev_data ${dataset}/dev.txt \
-        --test_data ${dataset}/test.bm25.txt \
+        --test_data ${dataset}/test.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
         --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/esen/ckpt.vanilla3.4 \
