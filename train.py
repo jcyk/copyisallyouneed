@@ -127,9 +127,8 @@ def main(args, local_rank):
                             for_train=True, rank=local_rank, num_replica=args.world_size)
 
     model.eval()
-    dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False)
-    test_data = DataLoader(vocabs, args.test_data, args.dev_batch_size, for_train=False)
-    bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=10)
+    #dev_data = DataLoader(vocabs, cur_dev_data, args.dev_batch_size, for_train=False)
+    #bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=10)
 
     step, epoch = 0, 0
     tr_stat = Statistics()
@@ -172,12 +171,21 @@ def main(args, local_rank):
                     tr_stat = Statistics()
                 if global_step % args.eval_every == -1 % args.eval_every:
                     model.eval()
-                    dev_data = DataLoader(vocabs, args.dev_data, args.dev_batch_size, for_train=False) 
-                    max_time_step = 100 if global_step > args.warmup_steps else 5
-                    bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=max_time_step)
+                    max_time_step = 120 if global_step > args.warmup_steps else 5
+                    bleus = []
+                    for cur_dev_data in args.dev_data:
+                        dev_data = DataLoader(vocabs, cur_dev_data, args.dev_batch_size, for_train=False) 
+                        bleu = validate(device, model, dev_data, beam_size=5, alpha=0.6, max_time_step=max_time_step)
+                        bleus.append(bleu)
+                    bleu = sum(bleus) / len(bleus)
                     logger.info("epoch %d, step %d, dev bleu %.2f", epoch, global_step, bleu)
                     if bleu > best_dev_bleu:
-                        testbleu = validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=max_time_step)
+                        testbleus = []
+                        for cur_test_data in args.test_data:
+                            test_data = DataLoader(vocabs, cur_test_data, args.dev_batch_size, for_train=False)
+                            testbleu = validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=max_time_step)
+                            testbleus.append(testbleu)
+                        testbleu = sum(testbleus) / len(testbleus)
                         logger.info("epoch %d, step %d, test bleu %.2f", epoch, global_step, testbleu)
                         torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_devbleu%.2f_testbleu%.2f'%(args.ckpt, epoch, global_step, bleu, testbleu))
                         best_dev_bleu = bleu
@@ -209,6 +217,17 @@ if __name__ == "__main__":
     args = parse_config()
     if not os.path.exists(args.ckpt):
         os.mkdir(args.ckpt)
+
+    if os.path.isdir(args.dev_data):
+        args.dev_data = [os.path.join(args.dev_data, file) for file in os.listdir(args.dev_data)] 
+    else:
+        args.dev_data = [args.dev_data]
+    
+    if os.path.isdir(args.test_data):
+        args.test_data = [os.path.join(args.test_data, file) for file in os.listdir(args.test_data)] 
+    else:
+        args.test_data = [args.test_data]
+
 
     if args.world_size == 1:
         main(args, 0)

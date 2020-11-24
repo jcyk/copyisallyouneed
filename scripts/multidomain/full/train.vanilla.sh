@@ -1,7 +1,8 @@
 dataset=/apdcephfs/private_jcykcai/multi_domain/full
+dev_test_path=/apdcephfs/private_jcykcai/multi_domain
 python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/train.txt \
-        --dev_data ${dataset}/dev.txt \
-        --test_data ${dataset}/test.txt \
+        --dev_data ${dev_test_path}/dev \
+        --test_data ${dev_test_path}/test \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
         --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/multi_domain/full/ckpt.vanilla \
