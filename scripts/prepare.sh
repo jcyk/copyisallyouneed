@@ -1,18 +1,42 @@
-main=/apdcephfs/private_jcykcai/multi_domain/1.4
+
+
+main=/apdcephfs/private_jcykcai/multi_domain/2.4
+
 python3 prepare.py --train_data_src ${main}/train.src.bpe \
 --train_data_tgt ${main}/train.tgt.bpe \
 --vocab_src ${main}/src.vocab \
 --vocab_tgt ${main}/tgt.vocab \
 --output_file ${main}/train.txt
 
-main=/apdcephfs/private_jcykcai/multi_domain/full
-python3 prepare.py --train_data_src ${main}/train.all.src.bpe \
---train_data_tgt ${main}/train.all.tgt.bpe \
+exit 0
+
+for domain in it  koran  law  medical  subtitles; do
+main=/apdcephfs/private_jcykcai/multi_domain/$domain
+python3 prepare.py --train_data_src ${main}/train.src.bpe \
+--train_data_tgt ${main}/train.tgt.bpe \
 --vocab_src ${main}/src.vocab \
 --vocab_tgt ${main}/tgt.vocab \
---output_file ${main}/train.all.txt
+--output_file ${main}/train.txt
+done
 
-exit 0
+
+
+main=/apdcephfs/private_jcykcai/multi_domain
+
+python3 prepare.py --train_data_src ${main}/train.src.bpe \
+--train_data_tgt ${main}/train.tgt.bpe \
+--vocab_src ${main}/1.4/src.vocab \
+--vocab_tgt ${main}/1.4/tgt.vocab \
+--output_file ${main}/1.4/train.txt
+
+
+python3 prepare.py --train_data_src ${main}/train.all.src.bpe \
+--train_data_tgt ${main}/train.all.tgt.bpe \
+--vocab_src ${main}/full/src.vocab \
+--vocab_tgt ${main}/full/tgt.vocab \
+--output_file ${main}/full/train.all.txt
+
+
 
 main=/apdcephfs/share_916081/jcykcai/gu
 out=/apdcephfs/private_jcykcai

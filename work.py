@@ -15,6 +15,7 @@ def parse_config():
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--load_path', type=str)
+    parser.add_argument('--index_path', type=str, default=None)
     parser.add_argument('--test_data', type=str)
     parser.add_argument('--test_batch_size', type=int, default=4096)
     parser.add_argument('--beam_size', type=int, default=5)
@@ -113,7 +114,7 @@ if __name__ == "__main__":
             model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.mem_dropout,
             model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing, model_args.use_mem_score)
     elif model_args.arch == 'rg':
-        retriever = Retriever.from_pretrained(vocabs, model_args.retriever, model_args.nprobe, model_args.num_retriever_heads, model_args.topk, -1)
+        retriever = Retriever.from_pretrained(model_args.num_retriever_heads, vocabs, args.index_path if args.index_path else model_args.retriever, model_args.nprobe, model_args.topk, args.device)
         model = RetrieverGenerator(vocabs, retriever, model_args.share_encoder,
                 model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.mem_dropout,
                 model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing)
@@ -121,24 +122,25 @@ if __name__ == "__main__":
     test_data = DataLoader(vocabs, args.test_data, args.test_batch_size, for_train=False)
 
     for test_model in test_models:
-        print (test_model)
         model.load_state_dict(torch.load(test_model)['model'])
         model = model.to(device)
         model.eval()
         bleu = validate(device, model, test_data, beam_size=args.beam_size, alpha=args.alpha, max_time_step=args.max_time_step)
-        print (bleu)
+        print (test_model, args.test_data, bleu)
         
-        outs, indices = [], []
-        for batch in test_data:
-            batch = move_to_device(batch, device)
-            res, ind = generate_batch(model, batch, args.beam_size, args.alpha, args.max_time_step)
-            for out_tokens, index in zip(res, ind):
-                out_line = re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(out_tokens))
-                outs.append(out_line)
-                indices.append(index)
 
+
+        if args.output_path is not None: 
+            outs, indices = [], []
+            for batch in test_data:
+                batch = move_to_device(batch, device)
+                res, ind = generate_batch(model, batch, args.beam_size, args.alpha, args.max_time_step)
+                for out_tokens, index in zip(res, ind):
+                    out_line = re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(out_tokens))
+                    outs.append(out_line)
+                    indices.append(index)
         order = np.argsort(np.array(indices))
-        with open(args.output_path, 'w') as fo:
-            for i in order:
-                out_line = outs[i]
-                fo.write(out_line+'\n')
+            with open(args.output_path, 'w') as fo:
+                for i in order:
+                    out_line = outs[i]
+                    fo.write(out_line+'\n')

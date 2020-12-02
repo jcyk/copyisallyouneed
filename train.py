@@ -171,7 +171,7 @@ def main(args, local_rank):
                     tr_stat = Statistics()
                 if global_step % args.eval_every == -1 % args.eval_every:
                     model.eval()
-                    max_time_step = 120 if global_step > args.warmup_steps else 5
+                    max_time_step = 256 if global_step > args.warmup_steps else 5
                     bleus = []
                     for cur_dev_data in args.dev_data:
                         dev_data = DataLoader(vocabs, cur_dev_data, args.dev_batch_size, for_train=False) 
@@ -194,7 +194,7 @@ def main(args, local_rank):
             if args.rebuild_every > 0 and (global_step % args.rebuild_every == -1 % args.rebuild_every):
                 model.retriever.drop_index()
                 torch.cuda.empty_cache()
-                next_index_dir = '%s/epoch%d_batch%d'%(args.ckpt, epoch, global_step)
+                next_index_dir = '%s/batch%d'%(args.ckpt, global_step)
                 if args.world_size == 1 or (dist.get_rank() == 0):
                     model.retriever.rebuild_index(next_index_dir)
                     dist.barrier()
