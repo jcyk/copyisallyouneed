@@ -1,16 +1,15 @@
-dataset=/apdcephfs/private_jcykcai/esen
+dataset=/apdcephfs/private_jcykcai/deen/1.4
 python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/train.txt \
         --dev_data ${dataset}/dev.txt \
         --test_data ${dataset}/test.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --retriever /apdcephfs/share_916081/jcykcai/mt.ckpts/esen/ckpt.exp.pretrain/epoch19_batch99999_acc0.99 \
-        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/esen/ckpt.exp.dynamic.qr \
+        --retriever /apdcephfs/share_916081/jcykcai/mt.ckpts/deen/ckpt.exp.pretrain1.4/epoch77_batch99999_acc0.97_1.4 \
+        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/deen/transfer/1to1 \
         --world_size 2 \
         --gpus 2 \
         --arch rg \
         --dev_batch_size 2048 \
         --per_gpu_train_batch_size 4096 \
         --num_retriever_heads 1 \
-        --topk 5 \
-        --rebuild_every 3000
+        --topk 5

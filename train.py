@@ -171,7 +171,7 @@ def main(args, local_rank):
                     tr_stat = Statistics()
                 if global_step % args.eval_every == -1 % args.eval_every:
                     model.eval()
-                    max_time_step = 256 if global_step > args.warmup_steps else 5
+                    max_time_step = 256 if global_step > 2*args.warmup_steps else 5
                     bleus = []
                     for cur_dev_data in args.dev_data:
                         dev_data = DataLoader(vocabs, cur_dev_data, args.dev_batch_size, for_train=False) 

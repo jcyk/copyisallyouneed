@@ -21,7 +21,7 @@ def parse_config():
     parser.add_argument('--beam_size', type=int, default=5)
     parser.add_argument('--alpha', type=float, default=0.6)
     parser.add_argument('--max_time_step', type=int, default=256)
-    parser.add_argument('--output_path', type=str)
+    parser.add_argument('--output_path', type=str, default=None)
     parser.add_argument('--device', type=int, default=0)
 
     return parser.parse_args()
@@ -139,7 +139,7 @@ if __name__ == "__main__":
                     out_line = re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(out_tokens))
                     outs.append(out_line)
                     indices.append(index)
-        order = np.argsort(np.array(indices))
+            order = np.argsort(np.array(indices))
             with open(args.output_path, 'w') as fo:
                 for i in order:
                     out_line = outs[i]

@@ -4,7 +4,7 @@ python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${data
         --test_data ${dataset}/test.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --retriever /apdcephfs/share_916081/jcykcai/mt.ckpts/deen/ckpt.exp.pretrain4/epoch19_batch99999_acc0.97 \
+        --retriever /apdcephfs/share_916081/jcykcai/mt.ckpts/deen/ckpt.exp.pretrain/epoch19_batch99999_acc0.97 \
         --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/deen/ckpt.exp.dynamic.qr \
         --world_size 2 \
         --gpus 2 \

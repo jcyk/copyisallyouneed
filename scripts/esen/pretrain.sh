@@ -1,4 +1,4 @@
-dataset=/apdcephfs/private_jcykcai/esen/full
+dataset=/apdcephfs/private_jcykcai/esen
 python3 /apdcephfs/private_jcykcai/copyisallyouneed/pretrain.py --train_data ${dataset}/train.txt \
         --dev_data ${dataset}/dev.txt \
         --src_vocab ${dataset}/src.vocab \

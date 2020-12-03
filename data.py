@@ -105,11 +105,11 @@ def ArraysToTensor(xs):
         #tensor = torch.from_numpy(data).long()
     return data
 
-def batchify(data, vocabs):
+def batchify(data, vocabs, max_seq_len):
 
-    src_tokens = [ [BOS]+x['src_tokens']for x in data]
-    tgt_tokens_in = [[BOS]+x['tgt_tokens'] for x in data]
-    tgt_tokens_out = [x['tgt_tokens']+[EOS] for x in data]
+    src_tokens = [ [BOS]+x['src_tokens'][:max_seq_len] for x in data]
+    tgt_tokens_in = [[BOS]+x['tgt_tokens'][:max_seq_len] for x in data]
+    tgt_tokens_out = [x['tgt_tokens'][:max_seq_len]+[EOS] for x in data]
 
     src_token = ListsToTensor(src_tokens, vocabs['src'])
 
@@ -145,7 +145,7 @@ def batchify(data, vocabs):
         all_mem_tokens = []
         all_mem_scores = []
         for i in range(num_mem_sents):
-            all_mem_tokens.extend([x['mem_sents'][i] + [EOS] for x in data])
+            all_mem_tokens.extend([ [BOS]+x['mem_sents'][i][:max_seq_len] for x in data])
             all_mem_scores.extend([x['mem_scores'][i] for x in data])
         # then convert to tensors:
         # all_mem_tokens -> seq_len x (num_mem_sents * bsz)
@@ -170,19 +170,19 @@ class DataLoader(object):
         mem_sents, mem_scores = [], []
         for line in open(filename).readlines()[rank::num_replica]:
             src, tgt, *mem = line.strip().split('\t')
-            src, tgt = src.split()[:max_seq_len], tgt.split()[:max_seq_len]
+            src, tgt = src.split(), tgt.split()
             src_sizes.append(len(src))
             tgt_sizes.append(len(tgt))
             src_tokens.append(src)
             tgt_tokens.append(tgt)
 
-            mem_sents.append([ref.split()[:max_seq_len] for ref in mem[:-1:2]])
+            mem_sents.append([ref.split() for ref in mem[:-1:2]])
             mem_scores.append([float(score) for score in mem[1::2]])
-
         self.src = src_tokens
         self.tgt = tgt_tokens
         self.src_sizes = np.array(src_sizes)
         self.tgt_sizes = np.array(tgt_sizes)
+        self.max_seq_len = max_seq_len
         self.mem_sents = mem_sents
         self.mem_scores = mem_scores
         logger.info("(DataLoader rank %d) read %s file with %d paris. max src len: %d, max tgt len: %d", rank, filename, len(self.src), self.src_sizes.max(), self.tgt_sizes.max())
@@ -224,7 +224,7 @@ class DataLoader(object):
                 mem_scores = self.mem_scores[i]
                 item = {'src_tokens':src_tokens, 'tgt_tokens':tgt_tokens, 'mem_sents':mem_sents, 'mem_scores':mem_scores, 'index':i}
                 data.append(item)
-            yield batchify(data, self.vocabs)
+            yield batchify(data, self.vocabs, self.max_seq_len)
 
 def parse_config():
     import argparse

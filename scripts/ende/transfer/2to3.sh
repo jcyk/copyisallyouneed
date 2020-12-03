@@ -1,11 +1,11 @@
-dataset=/apdcephfs/private_jcykcai/fren
+dataset=/apdcephfs/private_jcykcai/deen/2.4
 python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/train.txt \
         --dev_data ${dataset}/dev.txt \
         --test_data ${dataset}/test.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --retriever /apdcephfs/share_916081/jcykcai/mt.ckpts/fren/ckpt.exp.pretrain4/epoch18_batch99999_acc0.99 \
-        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/fren/ckpt.exp.dynamic \
+        --retriever /apdcephfs/share_916081/jcykcai/mt.ckpts/deen/ckpt.exp.pretrain2.4/epoch38_batch99999_acc0.98_3.4 \
+        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/deen/transfer/2to3 \
         --world_size 2 \
         --gpus 2 \
         --arch rg \
