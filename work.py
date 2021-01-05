@@ -126,7 +126,7 @@ if __name__ == "__main__":
         model = model.to(device)
         model.eval()
         bleu = validate(device, model, test_data, beam_size=args.beam_size, alpha=args.alpha, max_time_step=args.max_time_step)
-        print (test_model, args.test_data, bleu)
+        print ("%s %s %.2f"%(test_model, args.test_data, bleu))
         
 
 

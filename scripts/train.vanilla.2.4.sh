@@ -1,4 +1,4 @@
-for direction in enes esen deen ende; do
+for direction in ende; do
 dataset=/apdcephfs/private_jcykcai/${direction}/2.4
 python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/train.txt \
         --dev_data ${dataset}/dev.txt \

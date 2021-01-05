@@ -1,10 +1,10 @@
 set -e
 
-dataset=/apdcephfs/private_jcykcai/esen
-ckpt_prefix=/apdcephfs/share_916081/jcykcai/mt.ckpts/esen
+dataset=/apdcephfs/private_jcykcai/ende
+ckpt_prefix=/apdcephfs/share_916081/jcykcai/mt.ckpts/ende
 
-ckpt=${ckpt_prefix}/transfer/1to1/epoch123_batch92999_devbleu58.99_testbleu58.30
-index=${ckpt_prefix}/ckpt.exp.pretrain1.4/epoch78_batch99999_acc0.99
+ckpt=${ckpt_prefix}/transfer/1to1/epoch124_batch94999_devbleu49.03_testbleu49.81
+index=${ckpt_prefix}/ckpt.exp.pretrain1.4/epoch77_batch99999_acc0.97
 for set in 1.4 2.4 3.4 full; do
     for split in dev test; do
         python3 /apdcephfs/private_jcykcai/copyisallyouneed/work.py --load_path ${ckpt} \
@@ -14,8 +14,8 @@ for set in 1.4 2.4 3.4 full; do
 done
 
 
-ckpt=${ckpt_prefix}/transfer/2to2/epoch54_batch82999_devbleu63.34_testbleu62.75
-index=${ckpt_prefix}/ckpt.exp.pretrain2.4/epoch39_batch99999_acc0.99
+ckpt=${ckpt_prefix}/transfer/2to2/epoch40_batch61999_devbleu53.71_testbleu53.90
+index=${ckpt_prefix}/ckpt.exp.pretrain2.4/epoch38_batch99999_acc0.97
 for set in 2.4 3.4 full; do
     for split in dev test; do
         python3 /apdcephfs/private_jcykcai/copyisallyouneed/work.py --load_path ${ckpt} \
