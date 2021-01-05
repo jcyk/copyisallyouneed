@@ -127,3 +127,4 @@ dmypy.json
 mips/
 *.txt
 *.vocab
+copyresults/*

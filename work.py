@@ -23,6 +23,7 @@ def parse_config():
     parser.add_argument('--max_time_step', type=int, default=256)
     parser.add_argument('--output_path', type=str, default=None)
     parser.add_argument('--device', type=int, default=0)
+    parser.add_argument('--bt', action='store_true')
 
     return parser.parse_args()
 
@@ -125,20 +126,29 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(test_model)['model'])
         model = model.to(device)
         model.eval()
-        bleu = validate(device, model, test_data, beam_size=args.beam_size, alpha=args.alpha, max_time_step=args.max_time_step)
-        print ("%s %s %.2f"%(test_model, args.test_data, bleu))
+        if not args.bt:
+            bleu = validate(device, model, test_data, beam_size=args.beam_size, alpha=args.alpha, max_time_step=args.max_time_step)
+            logger.info("%s %s %.2f", test_model, args.test_data, bleu)
         
-
-
+        TOT = len(test_data)
+        DONE = 0
+        logger.info("%d/%d", DONE, TOT)
         if args.output_path is not None: 
             outs, indices = [], []
             for batch in test_data:
                 batch = move_to_device(batch, device)
                 res, ind = generate_batch(model, batch, args.beam_size, args.alpha, args.max_time_step)
                 for out_tokens, index in zip(res, ind):
-                    out_line = re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(out_tokens))
+                    if args.bt:
+                        out_line = ' '.join(out_tokens)
+                    else:
+                        out_line = re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(out_tokens))
+                    DONE += 1
+                    if DONE % 10000 == -1 % 10000:
+                        logger.info("%d/%d", DONE, TOT)
                     outs.append(out_line)
                     indices.append(index)
+
             order = np.argsort(np.array(indices))
             with open(args.output_path, 'w') as fo:
                 for i in order:
