@@ -58,6 +58,7 @@ def parse_config():
     parser.add_argument('--ckpt', type=str, default='ckpt')
     parser.add_argument('--print_every', type=int, default=100)
     parser.add_argument('--eval_every', type=int, default=1000)
+    parser.add_argument('--only_save_best', action='store_true')
 
     # distributed training
     parser.add_argument('--world_size', type=int, default=1)
@@ -187,7 +188,9 @@ def main(args, local_rank):
                             testbleus.append(testbleu)
                         testbleu = sum(testbleus) / len(testbleus)
                         logger.info("epoch %d, step %d, test bleu %.2f", epoch, global_step, testbleu)
-                        torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_devbleu%.2f_testbleu%.2f'%(args.ckpt, epoch, global_step, bleu, testbleu))
+                        torch.save({'args':args, 'model':model.state_dict()}, '%s/best.pt'%(args.ckpt, ))
+                        if not args.only_save_best:
+                            torch.save({'args':args, 'model':model.state_dict()}, '%s/epoch%d_batch%d_devbleu%.2f_testbleu%.2f'%(args.ckpt, epoch, global_step, bleu, testbleu))
                         best_dev_bleu = bleu
                     model.train()
 
