@@ -1,8 +1,8 @@
 set -e
 
-dataset=/apdcephfs/private_jcykcai/deen/2.4
-reverse_dataset=/apdcephfs/private_jcykcai/ende
-ckpt=/apdcephfs/share_916081/jcykcai/mt.ckpts/deen/bt2.4
+dataset=/apdcephfs/private_jcykcai/ende/2.4
+reverse_dataset=/apdcephfs/private_jcykcai/deen
+ckpt=/apdcephfs/share_916081/jcykcai/mt.ckpts/ende/bt2.4
 
 #awk -F '\t' '{print $2"\t"$1}' ${dataset}/train.txt > ${dataset}/train.reverse.txt
 
@@ -32,7 +32,7 @@ ckpt=/apdcephfs/share_916081/jcykcai/mt.ckpts/deen/bt2.4
 
 #python3 /apdcephfs/private_jcykcai/copyisallyouneed/work.py --load_path ${ckpt}/best.pt \
 #        --test_data ${reverse_dataset}/train.txt \
-#       --output_path ${dataset}/bt.beam.train.tgt.txt \
+#        --output_path ${dataset}/bt.beam.train.tgt.txt \
 #        --bt \
 #        --beam_size 5
 
@@ -63,4 +63,7 @@ python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${data
         --arch vanilla \
         --dev_batch_size 2048 \
         --per_gpu_train_batch_size 4096
+
+
+
 

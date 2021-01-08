@@ -40,12 +40,13 @@ ckpt=/apdcephfs/share_916081/jcykcai/mt.ckpts/esen/bt1.4
 # paste -d '\t' ${dataset}/bt.beam.train.tgt.txt ${reverse_dataset}/train.src.txt >> ${dataset}/bt.beam.train.txt
 # cat ${dataset}/train.txt >> ${dataset}/bt.beam.train.txt
 
-python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/bt.greedy.train.txt \
+
+python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/bt.beam.train.txt \
         --dev_data ${dataset}/dev.txt \
         --test_data ${dataset}/test.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --ckpt ${ckpt}/greedy \
+        --ckpt ${ckpt}/beam \
         --world_size 2 \
         --gpus 2 \
         --arch vanilla \

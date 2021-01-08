@@ -84,6 +84,9 @@ def validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=100
     return bleu
 
 if __name__ == "__main__":
+    logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
+                    datefmt='%m/%d/%Y %H:%M:%S',
+                    level=logging.INFO)
 
     args = parse_config()
 

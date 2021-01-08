@@ -169,8 +169,16 @@ class DataLoader(object):
         src_sizes, tgt_sizes = [], []
         mem_sents, mem_scores = [], []
         for line in open(filename).readlines()[rank::num_replica]:
-            src, tgt, *mem = line.strip().split('\t')
+            try:
+                src, tgt, *mem = line.strip().split('\t')
+            except:
+                continue
             src, tgt = src.split(), tgt.split()
+            if len(src)/len(tgt) > 1.5:
+                continue
+            if len(tgt)/len(src) > 1.5:
+                continue
+
             src_sizes.append(len(src))
             tgt_sizes.append(len(tgt))
             src_tokens.append(src)
