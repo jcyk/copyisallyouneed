@@ -24,6 +24,9 @@ def parse_config():
     parser.add_argument('--output_path', type=str, default=None)
     parser.add_argument('--device', type=int, default=0)
     parser.add_argument('--bt', action='store_true')
+    parser.add_argument('--retain_bpe', action='store_true')
+    parser.add_argument('--comp_bleu', action='store_true')
+    parser.add_argument('--dump_path', default=None)
 
     return parser.parse_args()
 
@@ -36,7 +39,7 @@ def generate_batch(model, batch, beam_size, alpha, max_time_step):
         token_batch.append(predicted_token)
     return token_batch, batch['indices']
 
-def validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=100):
+def validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=100, dump_path=None):
     """For Development Only"""
 
     ref_stream = []
@@ -81,6 +84,11 @@ def validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=100
             retrieval = [ "%d: %s"%(i, sys_retr_streams[i][sample_id]) for i in range(topk)]
             logger.info("%d: %s###\n generation: %s###\nretrieval:\n %s", sample_id, ref_stream[sample_id], sys_stream[sample_id], '\n'.join(retrieval))
         logger.info("<<< show some examples")
+    if dump_path is not None:
+        results = {'sys_stream':sys_stream,
+        'ref_stream' : ref_stream,
+        'sys_retr_streams'sys_retr_streams}
+        json.dump(results, open(dump_path, 'w'))
     return bleu
 
 if __name__ == "__main__":
@@ -89,6 +97,9 @@ if __name__ == "__main__":
                     level=logging.INFO)
 
     args = parse_config()
+    if args.bt:
+        args.retain_bpe = True
+        args.comp_bleu = False
 
     test_models = []
     if os.path.isdir(args.load_path):
@@ -129,20 +140,21 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(test_model)['model'])
         model = model.to(device)
         model.eval()
-        if not args.bt:
-            bleu = validate(device, model, test_data, beam_size=args.beam_size, alpha=args.alpha, max_time_step=args.max_time_step)
+        if args.comp_bleu:
+            bleu = validate(device, model, test_data, beam_size=args.beam_size, alpha=args.alpha, max_time_step=args.max_time_step, dump_path=args.dump_path)
             logger.info("%s %s %.2f", test_model, args.test_data, bleu)
         
-        TOT = len(test_data)
-        DONE = 0
-        logger.info("%d/%d", DONE, TOT)
+
         if args.output_path is not None: 
+            TOT = len(test_data)
+            DONE = 0
+            logger.info("%d/%d", DONE, TOT)
             outs, indices = [], []
             for batch in test_data:
                 batch = move_to_device(batch, device)
                 res, ind = generate_batch(model, batch, args.beam_size, args.alpha, args.max_time_step)
                 for out_tokens, index in zip(res, ind):
-                    if args.bt:
+                    if args.retain_bpe:
                         out_line = ' '.join(out_tokens)
                     else:
                         out_line = re.sub(r'(@@ )|(@@ ?$)', '', ' '.join(out_tokens))
