@@ -174,11 +174,11 @@ class DataLoader(object):
             except:
                 continue
             src, tgt = src.split(), tgt.split()
+            
             #TODO please remove this part#
-            if len(src)/len(tgt) > 1.5:
-                continue
-            if len(tgt)/len(src) > 1.5:
-                continue
+            #if not for_train:
+            #    if len(src)/len(tgt) > 1.5 or len(tgt)/len(src) > 1.5:
+            #        continue
             #TODO#
 
             src_sizes.append(len(src))

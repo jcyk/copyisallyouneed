@@ -26,7 +26,9 @@ def parse_config():
     parser.add_argument('--bt', action='store_true')
     parser.add_argument('--retain_bpe', action='store_true')
     parser.add_argument('--comp_bleu', action='store_true')
+    # Only for debug and analyze
     parser.add_argument('--dump_path', default=None)
+    parser.add_argument('--hot_index', default=None)
 
     return parser.parse_args()
 
@@ -63,8 +65,8 @@ def validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=100
     bleu = sacrebleu.corpus_bleu(sys_stream, ref_streams, 
                           force=True, lowercase=False,
                           tokenize='none').score
+    sys_retr_streams = []
     if topk_sys_retr_stream:
-        sys_retr_streams = []
         assert len(topk_sys_retr_stream) == len(ref_stream)
         topk = len(topk_sys_retr_stream[0])
         for i in range(topk):
@@ -79,15 +81,15 @@ def validate(device, model, test_data, beam_size=5, alpha=0.6, max_time_step=100
                               tokenize='none').score
             sys_retr_streams.append(sys_retr_stream)
             logger.info("Retrieval top%d bleu %.2f length ratio %.2f", i+1, bleu_retr, sum(lratio)/len(lratio))
-        logger.info("show some examples >>>")
-        for sample_id in [5, 6, 11, 22, 33, 44, 55, 66, 555, 666]:
-            retrieval = [ "%d: %s"%(i, sys_retr_streams[i][sample_id]) for i in range(topk)]
-            logger.info("%d: %s###\n generation: %s###\nretrieval:\n %s", sample_id, ref_stream[sample_id], sys_stream[sample_id], '\n'.join(retrieval))
-        logger.info("<<< show some examples")
+        # logger.info("show some examples >>>")
+        # for sample_id in [5, 6, 11, 22, 33, 44, 55, 66, 555, 666]:
+        #     retrieval = [ "%d: %s"%(i, sys_retr_streams[i][sample_id]) for i in range(topk)]
+        #     logger.info("%d: %s###\n generation: %s###\nretrieval:\n %s", sample_id, ref_stream[sample_id], sys_stream[sample_id], '\n'.join(retrieval))
+        # logger.info("<<< show some examples")
     if dump_path is not None:
-        results = {'sys_stream':sys_stream,
+        results = {'sys_stream': sys_stream,
         'ref_stream' : ref_stream,
-        'sys_retr_streams'sys_retr_streams}
+        'sys_retr_streams': sys_retr_streams}
         json.dump(results, open(dump_path, 'w'))
     return bleu
 
@@ -129,10 +131,15 @@ if __name__ == "__main__":
             model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.mem_dropout,
             model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing, model_args.use_mem_score)
     elif model_args.arch == 'rg':
-        retriever = Retriever.from_pretrained(model_args.num_retriever_heads, vocabs, args.index_path if args.index_path else model_args.retriever, model_args.nprobe, model_args.topk, args.device)
+        retriever = Retriever.from_pretrained(model_args.num_retriever_heads, vocabs, args.index_path if args.index_path else model_args.retriever, model_args.nprobe, model_args.topk, args.device, use_response_encoder=(model_args.rebuild_every > 0))
         model = RetrieverGenerator(vocabs, retriever, model_args.share_encoder,
                 model_args.embed_dim, model_args.ff_embed_dim, model_args.num_heads, model_args.dropout, model_args.mem_dropout,
                 model_args.enc_layers, model_args.dec_layers, model_args.mem_enc_layers, model_args.label_smoothing)
+
+        if args.hot_index is not None:
+            model.retriever.drop_index()
+            torch.cuda.empty_cache()
+            model.retriever.update_index(args.hot_index, model_args.nprobe)
 
     test_data = DataLoader(vocabs, args.test_data, args.test_batch_size, for_train=False)
 

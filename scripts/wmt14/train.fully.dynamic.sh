@@ -1,11 +1,10 @@
-dataset=/apdcephfs/private_jcykcai/multi_domain/train
-dev_test_path=/apdcephfs/private_jcykcai/multi_domain
+dataset=/apdcephfs/private_jcykcai/multi_domain
 python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/train.txt \
-        --dev_data ${dev_test_path}/dev \
-        --test_data ${dev_test_path}/test \
+        --dev_data ${dataset}/dev \
+        --test_data ${dataset}/test \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --retriever /apdcephfs/share_916081/jcykcai/mt.ckpts/multi_domain/ckpt.exp.pretrain/epoch40_batch99999_acc0.80_train \
+        --retriever /apdcephfs/share_916081/jcykcai/mt.ckpts/multi_domain/ckpt.exp.pretrain/epoch40_batch99999_acc0.80 \
         --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/multi_domain/ckpt.exp.dynamic \
         --world_size 2 \
         --gpus 2 \

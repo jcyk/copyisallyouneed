@@ -1,4 +1,27 @@
 
+main=/apdcephfs/private_jcykcai/wmt14_en_de
+python3 prepare.py --train_data_src ${main}/train.de \
+--train_data_tgt ${main}/train.en \
+--vocab_src ${main}/src.vocab \
+--vocab_tgt ${main}/tgt.vocab \
+--output_file ${main}/train.txt
+
+paste -d '\t' ${main}/valid.de ${main}/valid.en > ${main}/dev.txt
+paste -d '\t' ${main}/test.de ${main}/test.en > ${main}/test.txt
+
+exit 0
+
+for domain in it  koran  law  medical  subtitles; do
+main=/apdcephfs/private_jcykcai/multi_domain
+python3 prepare.py --train_data_src ${main}/$domain/train.src.bpe \
+--train_data_tgt ${main}/$domain/train.tgt.bpe \
+--vocab_src ${main}/$domain/src.vocab \
+--vocab_tgt ${main}/$domain/tgt.vocab \
+--output_file ${main}/$domain/train.txt
+done
+
+exit 0
+
 for domain in it  koran  law  medical  subtitles; do
 main=/apdcephfs/private_jcykcai/multi_domain/train
 python3 prepare.py --train_data_src ${main}/$domain.train.src.bpe \
