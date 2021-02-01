@@ -1,13 +1,13 @@
 
-main=/apdcephfs/private_jcykcai/wmt14_en_de
-python3 prepare.py --train_data_src ${main}/train.de \
---train_data_tgt ${main}/train.en \
+main=/apdcephfs/private_jcykcai/wmt14_gl
+python3 prepare.py --train_data_src ${main}/corpus.bpe32k.de \
+--train_data_tgt ${main}/corpus.bpe32k.en \
 --vocab_src ${main}/src.vocab \
 --vocab_tgt ${main}/tgt.vocab \
 --output_file ${main}/train.txt
 
-paste -d '\t' ${main}/valid.de ${main}/valid.en > ${main}/dev.txt
-paste -d '\t' ${main}/test.de ${main}/test.en > ${main}/test.txt
+paste -d '\t' ${main}/newstest2013.bpe.de ${main}/newstest2013.bpe.en > ${main}/dev.txt
+paste -d '\t' ${main}/newstest2014.bpe.de ${main}/newstest2014.bpe.en > ${main}/test.txt
 
 exit 0
 
