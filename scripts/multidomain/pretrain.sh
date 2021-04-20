@@ -1,5 +1,5 @@
-dataset=pdcephfs/share_916081/jcykcai/multi_domain
-/pretrain.py --train_data ${dataset}/train/train.txt \
+dataset=${MTPATH}/multi_domain
+python3 pretrain.py --train_data ${dataset}/train/train.txt \
         --dev_data ${dataset}/dev.txt \
         --src_vocab ${dataset}/train/src.vocab \
         --tgt_vocab ${dataset}/train/tgt.vocab \

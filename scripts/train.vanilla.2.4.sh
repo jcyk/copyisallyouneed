@@ -1,6 +1,6 @@
 for direction in ende; do
-dataset=pdcephfs/share_916081/jcykcai/${direction}/2.4
-/train.py --train_data ${dataset}/train.txt \
+dataset=${MTPATH}/${direction}/2.4
+python3 train.py --train_data ${dataset}/train.txt \
         --dev_data ${dataset}/dev.txt \
         --test_data ${dataset}/test.txt \
         --src_vocab ${dataset}/src.vocab \

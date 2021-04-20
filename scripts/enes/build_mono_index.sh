@@ -1,13 +1,13 @@
 set -e
 
 ckpt_prefix=${MTPATH}/mt.ckpts
-dataset_prefix=pdcephfs/share_916081/jcykcai/enes
+dataset_prefix=${MTPATH}/enes
 
 ckpt_folder=enes/ckpt.exp.pretrain1.4/epoch78_batch99999_acc0.99
 for dataset in 1.4 2.4 3.4 full
 do
 echo ${ckpt_prefix}/${ckpt_folder} ${dataset_prefix}/${dataset}
-/build_index.py \
+python3 build_index.py \
         --input_file ${dataset_prefix}/${dataset}/train.tgt.txt \
         --ckpt_path ${ckpt_prefix}/${ckpt_folder}/response_encoder \
         --args_path ${ckpt_prefix}/${ckpt_folder}/args \
@@ -15,7 +15,7 @@ echo ${ckpt_prefix}/${ckpt_folder} ${dataset_prefix}/${dataset}
         --index_path ${ckpt_prefix}/${ckpt_folder}/mips_index \
         --batch_size 8192
 
-/build_index.py \
+python3 build_index.py \
         --input_file ${dataset_prefix}/${dataset}/train.tgt.txt \
         --ckpt_path ${ckpt_prefix}/${ckpt_folder}/response_encoder \
         --args_path ${ckpt_prefix}/${ckpt_folder}/args \
@@ -32,7 +32,7 @@ ckpt_folder=enes/ckpt.exp.pretrain2.4/epoch39_batch99999_acc0.99
 for dataset in 2.4 3.4 full
 do
 echo ${ckpt_prefix}/${ckpt_folder} ${dataset_prefix}/${dataset}
-/build_index.py \
+python3 build_index.py \
         --input_file ${dataset_prefix}/${dataset}/train.tgt.txt \
         --ckpt_path ${ckpt_prefix}/${ckpt_folder}/response_encoder \
         --args_path ${ckpt_prefix}/${ckpt_folder}/args \
@@ -40,7 +40,7 @@ echo ${ckpt_prefix}/${ckpt_folder} ${dataset_prefix}/${dataset}
         --index_path ${ckpt_prefix}/${ckpt_folder}/mips_index \
         --batch_size 8192
 
-/build_index.py \
+python3 build_index.py \
         --input_file ${dataset_prefix}/${dataset}/train.tgt.txt \
         --ckpt_path ${ckpt_prefix}/${ckpt_folder}/response_encoder \
         --args_path ${ckpt_prefix}/${ckpt_folder}/args \

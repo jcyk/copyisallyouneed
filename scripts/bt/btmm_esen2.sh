@@ -8,10 +8,10 @@ mem=full
 name=btmm2
 dir=esen
 pt=epoch39_batch99999_acc0.99
-dataset=pdcephfs/share_916081/jcykcai/${dir}/${train}
+dataset=${MTPATH}/${dir}/${train}
 retriever=${MTPATH}/mt.ckpts/${dir}/ckpt.exp.pretrain${train}/${pt}_${mem}
 ckpt=${MTPATH}/mt.ckpts/${dir}/transfer/${name}
-/train.py --train_data ${dataset}/bt.beam.train.txt \
+python3 train.py --train_data ${dataset}/bt.beam.train.txt \
         --dev_data ${dataset}/dev.txt \
         --test_data ${dataset}/test.txt \
         --src_vocab ${dataset}/src.vocab \

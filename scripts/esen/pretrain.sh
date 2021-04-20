@@ -1,5 +1,5 @@
-dataset=pdcephfs/share_916081/jcykcai/esen
-/pretrain.py --train_data ${dataset}/train.txt \
+dataset=${MTPATH}/esen
+python3 pretrain.py --train_data ${dataset}/train.txt \
         --dev_data ${dataset}/dev.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \

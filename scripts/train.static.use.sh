@@ -1,5 +1,5 @@
-dataset=pdcephfs/share_916081/jcykcai/esen/full
-/train.py --train_data ${dataset}/train.mem.txt \
+dataset=${MTPATH}/esen/full
+python3 train.py --train_data ${dataset}/train.mem.txt \
         --dev_data ${dataset}/dev.mem.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \

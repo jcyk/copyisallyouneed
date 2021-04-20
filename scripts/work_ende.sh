@@ -1,6 +1,6 @@
 set -e
 
-dataset=pdcephfs/share_916081/jcykcai/ende
+dataset=${MTPATH}/ende
 ckpt_prefix=${MTPATH}/mt.ckpts/ende
 
 ckpt=${ckpt_prefix}/transfer/1to1/epoch124_batch94999_devbleu49.03_testbleu49.81

@@ -1,6 +1,6 @@
 for direction in enes esen deen ende; do
-dataset=pdcephfs/share_916081/jcykcai/${direction}
-/train.py --train_data ${dataset}/train.mem.txt \
+dataset=${MTPATH}/${direction}
+python3 train.py --train_data ${dataset}/train.mem.txt \
         --dev_data ${dataset}/dev.mem.txt \
         --test_data ${dataset}/test.mem.txt \
         --src_vocab ${dataset}/src.vocab \

@@ -2,11 +2,11 @@ set -e
 
 ckpt_prefix=${MTPATH}/mt.ckpts
 
-dataset=pdcephfs/share_916081/jcykcai/wmt14_gl
+dataset=${MTPATH}/wmt14_gl
 ckpt_folder=wmt14/ckpt.exp.pretrain.gl/epoch3_batch99999_acc0.97
 
 output_folder=${ckpt_prefix}/${ckpt_folder}
-/build_index.py \
+python3 build_index.py \
         --input_file ${dataset}/cands.txt \
         --ckpt_path ${ckpt_prefix}/${ckpt_folder}/response_encoder \
         --args_path ${ckpt_prefix}/${ckpt_folder}/args \
@@ -14,7 +14,7 @@ output_folder=${ckpt_prefix}/${ckpt_folder}
         --index_path ${ckpt_prefix}/${ckpt_folder}/mips_index \
         --batch_size 8192
 
-/build_index.py \
+python3 build_index.py \
         --input_file ${dataset}/cands.txt \
         --ckpt_path ${ckpt_prefix}/${ckpt_folder}/response_encoder \
         --args_path ${ckpt_prefix}/${ckpt_folder}/args \
@@ -27,11 +27,11 @@ cp ${dataset}/cands.txt ${output_folder}/candidates.txt
 
 exit 0
 
-dataset=pdcephfs/share_916081/jcykcai/multi_domain
+dataset=${MTPATH}/multi_domain
 ckpt_folder=multi_domain/ckpt.exp.pretrain/epoch40_batch99999_acc0.80
 
 output_folder=${ckpt_prefix}/${ckpt_folder}_gs
-/build_index.py \
+python3 build_index.py \
         --input_file ${dataset}/gs/gs.cands.txt \
         --ckpt_path ${ckpt_prefix}/${ckpt_folder}/response_encoder \
         --args_path ${ckpt_prefix}/${ckpt_folder}/args \
@@ -39,7 +39,7 @@ output_folder=${ckpt_prefix}/${ckpt_folder}_gs
         --index_path ${ckpt_prefix}/${ckpt_folder}/mips_index \
         --batch_size 8192
 
-/build_index.py \
+python3 build_index.py \
         --input_file ${dataset}/gs/gs.cands.txt \
         --ckpt_path ${ckpt_prefix}/${ckpt_folder}/response_encoder \
         --args_path ${ckpt_prefix}/${ckpt_folder}/args \
@@ -73,7 +73,7 @@ exit 0
 
 for domain in train it koran law medical subtitles full; do
 output_folder=${ckpt_prefix}/${ckpt_folder}_${domain}
-/build_index.py \
+python3 build_index.py \
         --input_file ${dataset}/${domain}/train.tgt.txt \
         --ckpt_path ${ckpt_prefix}/${ckpt_folder}/response_encoder \
         --args_path ${ckpt_prefix}/${ckpt_folder}/args \
@@ -81,7 +81,7 @@ output_folder=${ckpt_prefix}/${ckpt_folder}_${domain}
         --index_path ${ckpt_prefix}/${ckpt_folder}/mips_index \
         --batch_size 8192
 
-/build_index.py \
+python3 build_index.py \
         --input_file ${dataset}/${domain}/train.tgt.txt \
         --ckpt_path ${ckpt_prefix}/${ckpt_folder}/response_encoder \
         --args_path ${ckpt_prefix}/${ckpt_folder}/args \
@@ -96,10 +96,10 @@ done
 
 exit 0
 
-dataset=pdcephfs/share_916081/jcykcai/ende
+dataset=${MTPATH}/ende
 ckpt_folder=ende/ckpt.exp.pretrain/epoch19_batch99999_acc0.97 
 echo ${ckpt_prefix}/${ckpt_folder}
-/build_index.py \
+python3 build_index.py \
         --input_file ${dataset}/train.tgt.txt \
         --ckpt_path ${ckpt_prefix}/${ckpt_folder}/response_encoder \
         --args_path ${ckpt_prefix}/${ckpt_folder}/args \
@@ -107,7 +107,7 @@ echo ${ckpt_prefix}/${ckpt_folder}
         --index_path ${ckpt_prefix}/${ckpt_folder}/mips_index \
         --batch_size 8192
 
-/build_index.py \
+python3 build_index.py \
         --input_file ${dataset}/train.tgt.txt \
         --ckpt_path ${ckpt_prefix}/${ckpt_folder}/response_encoder \
         --args_path ${ckpt_prefix}/${ckpt_folder}/args \
@@ -119,10 +119,10 @@ echo ${ckpt_prefix}/${ckpt_folder}
 cp ${dataset}/train.tgt.txt ${ckpt_prefix}/${ckpt_folder}/candidates.txt
 
 
-dataset=pdcephfs/share_916081/jcykcai/enes
+dataset=${MTPATH}/enes
 ckpt_folder=enes/ckpt.exp.pretrain/epoch19_batch99999_acc0.99
 echo ${ckpt_prefix}/${ckpt_folder}
-/build_index.py \
+python3 build_index.py \
         --input_file ${dataset}/train.tgt.txt \
         --ckpt_path ${ckpt_prefix}/${ckpt_folder}/response_encoder \
         --args_path ${ckpt_prefix}/${ckpt_folder}/args \
@@ -130,7 +130,7 @@ echo ${ckpt_prefix}/${ckpt_folder}
         --index_path ${ckpt_prefix}/${ckpt_folder}/mips_index \
         --batch_size 8192
 
-/build_index.py \
+python3 build_index.py \
         --input_file ${dataset}/train.tgt.txt \
         --ckpt_path ${ckpt_prefix}/${ckpt_folder}/response_encoder \
         --args_path ${ckpt_prefix}/${ckpt_folder}/args \

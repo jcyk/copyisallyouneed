@@ -1,5 +1,5 @@
 
-main=pdcephfs/share_916081/jcykcai/wmt14_gl
+main=${MTPATH}/wmt14_gl
 python3 prepare.py --train_data_src ${main}/corpus.bpe32k.de \
 --train_data_tgt ${main}/corpus.bpe32k.en \
 --vocab_src ${main}/src.vocab \
@@ -12,7 +12,7 @@ paste -d '\t' ${main}/newstest2014.bpe.de ${main}/newstest2014.bpe.en > ${main}/
 exit 0
 
 for domain in it  koran  law  medical  subtitles; do
-main=pdcephfs/share_916081/jcykcai/multi_domain
+main=${MTPATH}/multi_domain
 python3 prepare.py --train_data_src ${main}/$domain/train.src.bpe \
 --train_data_tgt ${main}/$domain/train.tgt.bpe \
 --vocab_src ${main}/$domain/src.vocab \
@@ -23,7 +23,7 @@ done
 exit 0
 
 for domain in it  koran  law  medical  subtitles; do
-main=pdcephfs/share_916081/jcykcai/multi_domain/train
+main=${MTPATH}/multi_domain/train
 python3 prepare.py --train_data_src ${main}/$domain.train.src.bpe \
 --train_data_tgt ${main}/$domain.train.tgt.bpe \
 --vocab_src ${main}/src.vocab \
@@ -41,7 +41,7 @@ exit 0
 
 
 main=${MTPATH}/gu
-out=pdcephfs/share_916081/jcykcai
+out=${MTPATH}
 
 
 python3 prepare.py --train_data_src ${main}/esen/train/jrc.train.tgt.bpe \

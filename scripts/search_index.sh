@@ -1,6 +1,6 @@
 set -e
 
-dataset=pdcephfs/share_916081/jcykcai/ende
+dataset=${MTPATH}/ende
 vocab=${dataset}/src.vocab
 ckpt_folder=${MTPATH}/mt.ckpts/ende/ckpt.exp.pretrain/epoch19_batch99999_acc0.97
 /search_index.py \
@@ -37,7 +37,7 @@ ckpt_folder=${MTPATH}/mt.ckpts/ende/ckpt.exp.pretrain/epoch19_batch99999_acc0.97
 
 
 
-dataset=pdcephfs/share_916081/jcykcai/enes
+dataset=${MTPATH}/enes
 vocab=${dataset}/src.vocab
 ckpt_folder=${MTPATH}/mt.ckpts/enes/ckpt.exp.pretrain/epoch19_batch99999_acc0.99
 /search_index.py \
@@ -74,7 +74,7 @@ ckpt_folder=${MTPATH}/mt.ckpts/enes/ckpt.exp.pretrain/epoch19_batch99999_acc0.99
 
 exit 0
 
-dataset=pdcephfs/share_916081/jcykcai/esen/full
+dataset=${MTPATH}/esen/full
 vocab=${dataset}/src.vocab
 ckpt_folder=${MTPATH}/mt.ckpts/esen/ckpt.exp.pretrain4/epoch19_batch99999_acc0.99
 /search_index.py \
@@ -111,7 +111,7 @@ ckpt_folder=${MTPATH}/mt.ckpts/esen/ckpt.exp.pretrain4/epoch19_batch99999_acc0.9
 
 
 
-dataset=pdcephfs/share_916081/jcykcai/deen
+dataset=${MTPATH}/deen
 vocab=${dataset}/src.vocab
 ckpt_folder=${MTPATH}/mt.ckpts/deen/ckpt.exp.pretrain4/epoch19_batch99999_acc0.97
 /search_index.py \
@@ -148,7 +148,7 @@ ckpt_folder=${MTPATH}/mt.ckpts/deen/ckpt.exp.pretrain4/epoch19_batch99999_acc0.9
 
 
 
-dataset=pdcephfs/share_916081/jcykcai/fren
+dataset=${MTPATH}/fren
 vocab=${dataset}/src.vocab
 ckpt_folder=${MTPATH}/mt.ckpts/fren/ckpt.exp.pretrain4/epoch18_batch99999_acc0.99
 /search_index.py \

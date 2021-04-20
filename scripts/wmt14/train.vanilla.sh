@@ -1,5 +1,5 @@
-dataset=pdcephfs/share_916081/jcykcai/wmt14_gl
-/train.py --train_data ${dataset}/train.txt \
+dataset=${MTPATH}/wmt14_gl
+python3 train.py --train_data ${dataset}/train.txt \
         --dev_data ${dataset}/dev.txt \
         --test_data ${dataset}/test.txt \
         --src_vocab ${dataset}/src.vocab \

@@ -1,12 +1,12 @@
 set -e
 
-dataset=pdcephfs/share_916081/jcykcai/esen/1.4
-reverse_dataset=pdcephfs/share_916081/jcykcai/enes
+dataset=${MTPATH}/esen/1.4
+reverse_${MTPATH}/enes
 ckpt=${MTPATH}/mt.ckpts/esen/bt1.4
 
 #awk -F '\t' '{print $2"\t"$1}' ${dataset}/train.txt > ${dataset}/train.reverse.txt
 
-#/train.py --train_data ${dataset}/train.reverse.txt \
+#python3 train.py --train_data ${dataset}/train.reverse.txt \
 #        --dev_data ${reverse_dataset}/dev.txt \
 #        --test_data ${reverse_dataset}/test.txt \
 #        --src_vocab ${reverse_dataset}/src.vocab \
@@ -40,7 +40,7 @@ ckpt=${MTPATH}/mt.ckpts/esen/bt1.4
 # paste -d '\t' ${dataset}/bt.beam.train.tgt.txt ${reverse_dataset}/train.src.txt >> ${dataset}/bt.beam.train.txt
 # cat ${dataset}/train.txt >> ${dataset}/bt.beam.train.txt
 
-/train.py --train_data ${dataset}/bt.greedy.train.txt \
+python3 train.py --train_data ${dataset}/bt.greedy.train.txt \
         --dev_data ${dataset}/dev.txt \
         --test_data ${dataset}/test.txt \
         --src_vocab ${dataset}/src.vocab \
