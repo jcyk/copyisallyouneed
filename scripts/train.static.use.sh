@@ -1,9 +1,9 @@
-dataset=/apdcephfs/private_jcykcai/esen/full
-python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/train.mem.txt \
+dataset=pdcephfs/share_916081/jcykcai/esen/full
+/train.py --train_data ${dataset}/train.mem.txt \
         --dev_data ${dataset}/dev.mem.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/ckpt.exp.static.use \
+        --ckpt ${MTPATH}/mt.ckpts/ckpt.exp.static.use \
         --world_size 2 \
         --gpus 2 \
         --arch mem \

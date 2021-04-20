@@ -1,11 +1,11 @@
 for direction in ende; do
-dataset=/apdcephfs/private_jcykcai/${direction}/1.4
-python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/train.txt \
+dataset=pdcephfs/share_916081/jcykcai/${direction}/1.4
+/train.py --train_data ${dataset}/train.txt \
         --dev_data ${dataset}/dev.txt \
         --test_data ${dataset}/test.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/${direction}/ckpt.vanilla.1.4 \
+        --ckpt ${MTPATH}/mt.ckpts/${direction}/ckpt.vanilla.1.4 \
         --world_size 2 \
         --gpus 2 \
         --arch vanilla \

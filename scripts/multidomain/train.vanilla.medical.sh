@@ -1,10 +1,10 @@
-dataset=/apdcephfs/private_jcykcai/multi_domain
-python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/train/medical.train.txt \
+dataset=pdcephfs/share_916081/jcykcai/multi_domain
+/train.py --train_data ${dataset}/train/medical.train.txt \
         --dev_data ${dataset}/dev/medical.dev.txt \
         --test_data ${dataset}/test/medical.test.txt \
         --src_vocab ${dataset}/train/src.vocab \
         --tgt_vocab ${dataset}/train/tgt.vocab \
-        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/multi_domain/ckpt.vanilla.medical \
+        --ckpt ${MTPATH}/mt.ckpts/multi_domain/ckpt.vanilla.medical \
         --world_size 2 \
         --gpus 2 \
         --arch vanilla \

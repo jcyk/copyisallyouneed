@@ -1,14 +1,14 @@
 set -e
 
-dataset=/apdcephfs/private_jcykcai/ende/1.4
-reverse_dataset=/apdcephfs/private_jcykcai/deen
-ckpt=/apdcephfs/share_916081/jcykcai/mt.ckpts/ende/bt1.4
+dataset=pdcephfs/share_916081/jcykcai/ende/1.4
+reverse_dataset=pdcephfs/share_916081/jcykcai/deen
+ckpt=${MTPATH}/mt.ckpts/ende/bt1.4
 
 
 
 #awk -F '\t' '{print $2"\t"$1}' ${dataset}/train.txt > ${dataset}/train.reverse.txt
 
-#python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/train.reverse.txt \
+#/train.py --train_data ${dataset}/train.reverse.txt \
 #        --dev_data ${reverse_dataset}/dev.txt \
 #        --test_data ${reverse_dataset}/test.txt \
 #        --src_vocab ${reverse_dataset}/src.vocab \
@@ -21,7 +21,7 @@ ckpt=/apdcephfs/share_916081/jcykcai/mt.ckpts/ende/bt1.4
 #        --per_gpu_train_batch_size 4096 \
 #        --only_save_best
 
-#python3 /apdcephfs/private_jcykcai/copyisallyouneed/work.py --load_path ${ckpt}/best.pt \
+#python3 work.py --load_path ${ckpt}/best.pt \
 #        --test_data ${reverse_dataset}/train.txt \
 #        --output_path ${dataset}/bt.greedy.train.tgt.txt \
 #        --bt \
@@ -32,7 +32,7 @@ ckpt=/apdcephfs/share_916081/jcykcai/mt.ckpts/ende/bt1.4
 #paste -d '\t' ${dataset}/bt.greedy.train.tgt.txt ${reverse_dataset}/train.src.txt >> ${dataset}/bt.greedy.train.txt
 #cat ${dataset}/train.txt >> ${dataset}/bt.greedy.train.txt
 
-#python3 /apdcephfs/private_jcykcai/copyisallyouneed/work.py --load_path ${ckpt}/best.pt \
+#python3 work.py --load_path ${ckpt}/best.pt \
 #        --test_data ${reverse_dataset}/train.txt \
 #        --output_path ${dataset}/bt.beam.train.tgt.txt \
 #        --bt \
@@ -42,7 +42,7 @@ ckpt=/apdcephfs/share_916081/jcykcai/mt.ckpts/ende/bt1.4
 #paste -d '\t' ${dataset}/bt.beam.train.tgt.txt ${reverse_dataset}/train.src.txt >> ${dataset}/bt.beam.train.txt
 #cat ${dataset}/train.txt >> ${dataset}/bt.beam.train.txt
 
-python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/bt.greedy.train.txt \
+/train.py --train_data ${dataset}/bt.greedy.train.txt \
         --dev_data ${dataset}/dev.txt \
         --test_data ${dataset}/test.txt \
         --src_vocab ${dataset}/src.vocab \

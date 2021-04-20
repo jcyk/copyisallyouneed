@@ -1,11 +1,11 @@
 for direction in enes esen deen ende; do
-dataset=/apdcephfs/private_jcykcai/${direction}
-python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/train.mem.txt \
+dataset=pdcephfs/share_916081/jcykcai/${direction}
+/train.py --train_data ${dataset}/train.mem.txt \
         --dev_data ${dataset}/dev.mem.txt \
         --test_data ${dataset}/test.mem.txt \
         --src_vocab ${dataset}/src.vocab \
         --tgt_vocab ${dataset}/tgt.vocab \
-        --ckpt /apdcephfs/share_916081/jcykcai/mt.ckpts/${direction}/ckpt.exp.static \
+        --ckpt ${MTPATH}/mt.ckpts/${direction}/ckpt.exp.static \
         --world_size 2 \
         --gpus 2 \
         --arch mem \

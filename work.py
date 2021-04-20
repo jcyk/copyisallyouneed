@@ -7,7 +7,7 @@ from data import Vocab, DataLoader, BOS, EOS
 from generator import Generator, MemGenerator, RetrieverGenerator
 from utils import move_to_device
 from retriever import Retriever
-import argparse, os
+import argparse, os, time
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,8 @@ def parse_config():
     parser.add_argument('--bt', action='store_true')
     parser.add_argument('--retain_bpe', action='store_true')
     parser.add_argument('--comp_bleu', action='store_true')
+    parser.add_argument('--src_vocab_path', type=str, default=None)
+    parser.add_argument('--tgt_vocab_path', type=str, default=None)
     # Only for debug and analyze
     parser.add_argument('--dump_path', default=None)
     parser.add_argument('--hot_index', default=None)
@@ -114,8 +116,8 @@ if __name__ == "__main__":
         test_models.append(args.load_path)
         model_args = torch.load(args.load_path)['args']
     vocabs = dict()
-    vocabs['src'] = Vocab(model_args.src_vocab, 0, [BOS, EOS])
-    vocabs['tgt'] = Vocab(model_args.tgt_vocab, 0, [BOS, EOS])
+    vocabs['src'] = Vocab(args.src_vocab_path if args.src_vocab_path else model_args.src_vocab, 0, [BOS, EOS])
+    vocabs['tgt'] = Vocab(args.tgt_vocab_path if args.tgt_vocab_path else model_args.tgt_vocab, 0, [BOS, EOS])
 
     if args.device < 0:
         device = torch.device('cpu')
@@ -152,7 +154,8 @@ if __name__ == "__main__":
             logger.info("%s %s %.2f", test_model, args.test_data, bleu)
         
 
-        if args.output_path is not None: 
+        if args.output_path is not None:
+            start_time = time.time()
             TOT = len(test_data)
             DONE = 0
             logger.info("%d/%d", DONE, TOT)
@@ -170,7 +173,8 @@ if __name__ == "__main__":
                         logger.info("%d/%d", DONE, TOT)
                     outs.append(out_line)
                     indices.append(index)
-
+            end_time = time.time()
+            logger.info("Time elapsed: %f", end_time - start_time)
             order = np.argsort(np.array(indices))
             with open(args.output_path, 'w') as fo:
                 for i in order:

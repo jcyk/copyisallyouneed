@@ -12,10 +12,10 @@ total=${#directions[@]}
 for (( i=0; i<${total}; i++ )); do
     dir=${directions[$i]}
     pt=${ckpts[$i]}
-    dataset=/apdcephfs/private_jcykcai/${dir}/${train}
-    retriever=/apdcephfs/share_916081/jcykcai/mt.ckpts/${dir}/ckpt.exp.pretrain${train}/${pt}_${mem}
-    ckpt=/apdcephfs/share_916081/jcykcai/mt.ckpts/${dir}/transfer/${name}
-    python3 /apdcephfs/private_jcykcai/copyisallyouneed/train.py --train_data ${dataset}/train.txt \
+    dataset=pdcephfs/share_916081/jcykcai/${dir}/${train}
+    retriever=${MTPATH}/mt.ckpts/${dir}/ckpt.exp.pretrain${train}/${pt}_${mem}
+    ckpt=${MTPATH}/mt.ckpts/${dir}/transfer/${name}
+    /train.py --train_data ${dataset}/train.txt \
         --dev_data ${dataset}/dev.txt \
         --test_data ${dataset}/test.txt \
         --src_vocab ${dataset}/src.vocab \
