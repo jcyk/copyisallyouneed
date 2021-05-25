@@ -1,4 +1,6 @@
-# copyisallyouneed
+# Neural Machine Translation with Monolingual Translation Memory
 
-Before using any script in the `scripts` folder, do `export MTPATH=where_you_want_to_hold_data_and_models`.
+code for our ACL2021 paper
+[Neural Machine Translation with Monolingual Translation Memory](https://arxiv.org/pdf/2105.11269.pdf)
 
+Detailed instructions coming soon. For adventurers, the scripts to reproduce our results can be found in `scripts`.

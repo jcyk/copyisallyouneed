@@ -1,0 +1,1 @@
+Before using any script in the folder, do export MTPATH=where_you_want_to_hold_your_data_and_models.
