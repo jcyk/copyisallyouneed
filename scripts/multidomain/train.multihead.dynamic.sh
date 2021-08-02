@@ -1,5 +1,9 @@
 dataset=${MTPATH}/multi_domain/train
+<<<<<<< HEAD
 dev_test_path=pdcephfs/share_916081/jcykcai/multi_domain
+=======
+dev_test_path=${MTPATH}/multi_domain
+>>>>>>> 7e5fbc0a6b1e6326dce4b3e540e255ebc4af9485
 python3 train.py --train_data ${dataset}/train.txt \
         --dev_data ${dev_test_path}/dev \
         --test_data ${dev_test_path}/test \

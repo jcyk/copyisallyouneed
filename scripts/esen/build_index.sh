@@ -3,9 +3,6 @@ set -e
 ckpt_prefix=${MTPATH}/mt.ckpts
 
 
-cp ${dataset}/train.tgt.txt ${ckpt_prefix}/${ckpt_folder}/candidates.txt
-
-
 dataset=${MTPATH}/esen
 ckpt_folder=esen/ckpt.exp.pretrain/epoch19_batch99999_acc0.99
 echo ${ckpt_prefix}/${ckpt_folder}
