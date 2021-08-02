@@ -125,9 +125,5 @@ dmypy.json
 .pyre/
 *.DS_Store
 mips/
-<<<<<<< HEAD
-*.txt
-=======
->>>>>>> 7e5fbc0a6b1e6326dce4b3e540e255ebc4af9485
 *.vocab
 copyresults/*
