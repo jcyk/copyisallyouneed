@@ -24,7 +24,7 @@ The scripts to reproduce our results can be found in the `scripts` folder. Here 
 2. cross-alignment pre-training for the retrieval model: `sh scripts/esen/pretrain.sh`
 
 3. build the initial index: `sh scripts/esen/build_index.sh` (the `input_file` contains target-side sentences after bpe, and pls make sure to remove duplicates (`sort -u`))
-4. training: `sh scripts/esen/train.multihead.dynamic.sh` (model #4: fixed $E_{tgt}$) or `sh scripts/esen/train.multihead.dynamic.sh` (model #5)
+4. training: `sh scripts/esen/train.multihead.dynamic.sh` (model #4: fixed $E_{tgt}$) or `sh scripts/esen/train.fully.dynamic.sh` (model #5)
 5. testing:   `sh scripts/work.sh` (model #4)  or `sh scripts/work1.sh` (model #5)
 
 Other baselines:
